@@ -4,9 +4,9 @@
   expiryDate?: string;
   quantity: number;
   freeQuantity?: number;
-  purchasePrice: number;
-  mrp: number;
-  gstRate?: number;
+  purchasePrice: number; // Base cost price per unit BEFORE tax
+  mrp: number; // Maximum Retail Price
+  gstRate: number; // Total GST % (SGST% + CGST%)
 }
 
 export interface ExtractedPurchaseBill {
@@ -14,7 +14,10 @@ export interface ExtractedPurchaseBill {
   billNumber?: string;
   invoiceDate?: string; // YYYY-MM-DD
   dueDate?: string; // YYYY-MM-DD
-  discountAmount?: number;
+  subtotal?: number; // Total taxable amount before tax
+  taxAmount?: number; // Total GST tax amount
+  discountAmount?: number; // Total discount or scheme discount
+  grandTotal?: number; // Final payable amount
   paymentMethod?: 'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note';
   notes?: string;
   items: ExtractedBillItem[];
@@ -154,7 +157,6 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
       const errorData = await response.json().catch(() => ({}));
       lastErrorMessage = errorData?.error?.message || `HTTP ${response.status}`;
 
-      // If key itself is forbidden/invalid across API, report it
       if (response.status === 400 && lastErrorMessage.includes('API_KEY_INVALID')) {
         return { success: false, message: 'Invalid API key. Please check your key from Google AI Studio.' };
       }
@@ -195,41 +197,56 @@ export async function extractPurchaseBillFromImage(
 
   const { base64, mimeType } = await fileToBase64(file);
 
-  const systemInstruction = `You are an expert Indian Pharmaceutical Wholesale Billing and GST Invoice OCR Assistant.
-Analyze the provided medical distributor/wholesaler purchase invoice, delivery challan, or tax invoice photo/document (e.g. Marg ERP, Busy, Tally, dot-matrix, or printed invoices like Shri Laxmi Trading, Suncity Enterprises, Jyoti Enterprises).
+  const systemInstruction = `You are a specialized Indian Pharmaceutical Accounting and GST Invoice OCR Assistant.
+You have deep expertise in Marg ERP, Busy, Tally, Dot-matrix, and Thermal invoices from Indian wholesale medicine distributors.
 
-Extract all structured fields with maximum precision.
+CRITICAL MATHEMATICAL RULES FOR ACCURACY:
+1. PURCHASE RATE (TAX EXCLUSIVE):
+   - In Indian pharma invoices, the "RATE" column represents the Base Cost Price (EXCLUDING GST).
+   - The "N.Rate" or "Net Rate" column is the rate AFTER adding GST (e.g. Rate 59.32 + 18% GST = Net Rate 70.00).
+   - YOU MUST ALWAYS EXTRACT THE TAX-EXCLUSIVE BASE RATE as "purchasePrice" (e.g., 59.32, NOT 70.00).
+   - If only Net Rate is available: purchasePrice = NetRate / (1 + gstRate/100).
+   - If line has a trade or scheme discount, purchasePrice should be the effective discounted base rate per unit: (Line Amount before GST) / quantity.
 
-RULES FOR INDIAN PHARMA INVOICES:
-1. Vendor/Supplier: Find Distributor Name at the very top (e.g., "SHRI LAXMI TRADING COMPANY", "SUNCITY ENTERPRISES", "JYOTI ENTERPRISES").
-2. Invoice Number & Date: Find Invoice No (e.g. "CA26/27/4323", "SE/015917", "PB-XXXX") and Date. Normalize Date to YYYY-MM-DD (e.g., 12-09-2026 -> 2026-09-12).
-3. Due Date: If missing, set to 30 days after invoiceDate.
-4. Line Items Table:
-   - medicineName: Extract full product description with pack size (e.g. "MAXO COMBI(80)", "ENO SACHET(60)", "PUDIN HARA CAP(35)", "MANFORCE CONDOM(30)", "UNWANTED 72 TAB(76)", "S D ASHOKARIS 450ML", "MEGLOW ALOE GEL").
-   - batchNumber: Batch or Lot number (e.g. "WA744", "B023F25", "A2026", "ENC26021", "A1920", "BB03125"). If blank/dash, generate a placeholder.
-   - expiryDate: Normalize MM/YY or MM/YYYY (e.g. "11/29" -> "2029-11-30", "7/27" -> "2027-07-31", "1/28" -> "2028-01-31", "12/28" -> "2028-12-31").
-   - quantity: Numeric quantity billed (e.g. 2, 5, 10, 50).
-   - freeQuantity: Free or bonus quantity if any (e.g., +5, +1, +0.5).
-   - purchasePrice: Rate per unit / Net Rate ("RATE" or "N.Rate" column, e.g. 59.32, 47.62, 23.69).
-   - mrp: Maximum Retail Price column (e.g. 80.00, 60.00, 34.00, 315.00). If missing, calculate as 1.3 * purchasePrice.
-   - gstRate: Total GST percentage. In Indian invoices, SGST % + CGST % = total GST % (e.g., SGST 2.5% + CGST 2.5% = 5; SGST 6% + CGST 6% = 12; SGST 9% + CGST 9% = 18; SGST 14% + CGST 14% = 28). If tax is 0 or exempt, use 0. Default to 12 if not specified.
-5. Payment Method: Detect "Cash", "UPI", "Cheque", or "Bank Transfer" (often written in top/bottom stamp like "CASH", "PhonePe", "Union Bank").
+2. GST RATE CALCULATION:
+   - In Indian invoices, GST is split into "SGST" and "CGST".
+   - Total GST % = SGST % + CGST % (e.g., SGST 9% + CGST 9% = 18% GST; SGST 2.5% + CGST 2.5% = 5% GST; SGST 6% + CGST 6% = 12% GST; SGST 14% + CGST 14% = 28% GST).
+   - Never extract only one half (e.g., 9% SGST + 9% CGST is 18%, NOT 9%).
 
-Return ONLY a JSON object matching this schema:
+3. EXPIRY DATE NORMALIZATION:
+   - Convert shorthand MM/YY or MM/YYYY to last day of the month YYYY-MM-DD:
+     * "11/29" -> "2029-11-30"
+     * "7/27" -> "2027-07-31"
+     * "2/28" -> "2028-02-29"
+     * "1/26" or "2/36" -> "2026-01-31" or "2036-02-29"
+     * "12/28" -> "2028-12-31"
+
+4. BILL SUMMARY TOTALS:
+   - Extract "subtotal" (Taxable Sub Total), "taxAmount" (Total SGST + CGST), "discountAmount" (Scheme Discount / Cash Discount), and "grandTotal" (Grand Total / Party Total) directly from the summary table at the bottom.
+
+5. QUANTITY & BATCHES:
+   - quantity: Exact integer or decimal quantity billed.
+   - freeQuantity: Any free/bonus units (e.g. "+5", "+1").
+   - batchNumber: Batch/Lot code (e.g. "WA744", "B023F25", "A2026", "ENC26021", "A1920", "BD03125").
+
+Return ONLY valid JSON matching this schema:
 {
-  "vendorName": "Distributor Name",
-  "billNumber": "Invoice Number",
+  "vendorName": "Distributor Name (e.g. SHRI LAXMI TRADING COMPANY, SUNCITY ENTERPRISES, JYOTI ENTERPRISES)",
+  "billNumber": "Invoice Number (e.g. CA26/27/4323, SE/015917, CS002997)",
   "invoiceDate": "YYYY-MM-DD",
   "dueDate": "YYYY-MM-DD",
-  "discountAmount": 0,
+  "subtotal": 3583.67,
+  "taxAmount": 286.72,
+  "discountAmount": 0.0,
+  "grandTotal": 3870.0,
   "paymentMethod": "Cash",
-  "notes": "GST invoice verified",
+  "notes": "Verified against wholesale distributor invoice",
   "items": [
     {
-      "medicineName": "Product Name",
-      "batchNumber": "Batch No",
-      "expiryDate": "YYYY-MM-DD",
-      "quantity": 10,
+      "medicineName": "Full Medicine Name & Pack (e.g. MAXO COMBI(80), ENO SACHET(60), S D ASHOKARIS 450ml)",
+      "batchNumber": "WA744",
+      "expiryDate": "2029-11-30",
+      "quantity": 2,
       "freeQuantity": 0,
       "purchasePrice": 59.32,
       "mrp": 80.00,
@@ -254,7 +271,7 @@ Return ONLY a JSON object matching this schema:
     ],
     generationConfig: {
       response_mime_type: 'application/json',
-      temperature: 0.1
+      temperature: 0.0
     }
   };
 
@@ -278,7 +295,6 @@ Return ONLY a JSON object matching this schema:
         const errMsg = errJson?.error?.message || `Status ${response.status}`;
         console.warn(`Model ${model} returned error (${response.status}): ${errMsg}. Trying next model...`);
         lastError = new Error(errMsg);
-        // Continue loop to try next model
         continue;
       }
 
@@ -302,16 +318,23 @@ Return ONLY a JSON object matching this schema:
         parsed.items = [];
       }
 
-      parsed.items = parsed.items.map((item) => ({
-        medicineName: item.medicineName || 'Medical Item',
-        batchNumber: item.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-        expiryDate: item.expiryDate || '2028-12-31',
-        quantity: Number(item.quantity) || 1,
-        freeQuantity: Number(item.freeQuantity) || 0,
-        purchasePrice: Number(item.purchasePrice) || 50,
-        mrp: Number(item.mrp) || Number(item.purchasePrice) * 1.3 || 70,
-        gstRate: Number(item.gstRate) !== undefined ? Number(item.gstRate) : 12
-      }));
+      parsed.items = parsed.items.map((item) => {
+        const qty = Number(item.quantity) || 1;
+        const price = Number(item.purchasePrice) || 50;
+        const gst = Number(item.gstRate) !== undefined ? Number(item.gstRate) : 12;
+        const mrp = Number(item.mrp) || Number(price * 1.35);
+
+        return {
+          medicineName: item.medicineName || 'Medical Item',
+          batchNumber: item.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
+          expiryDate: item.expiryDate || '2028-12-31',
+          quantity: qty,
+          freeQuantity: Number(item.freeQuantity) || 0,
+          purchasePrice: Math.round(price * 100) / 100,
+          mrp: Math.round(mrp * 100) / 100,
+          gstRate: gst
+        };
+      });
 
       return parsed;
     } catch (err: any) {

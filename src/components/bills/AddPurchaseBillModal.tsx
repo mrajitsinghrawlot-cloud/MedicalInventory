@@ -145,22 +145,23 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
 
           const qty = Number(extItem.quantity) || 1;
           const price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
-          const gst = Number(extItem.gstRate) || matchedMed?.gstRate || 12;
+          const gst = Number(extItem.gstRate) !== undefined ? Number(extItem.gstRate) : (matchedMed?.gstRate || 12);
           const baseTotal = qty * price;
-          const taxAmt = (baseTotal * gst) / 100;
+          const taxAmt = Math.round(((baseTotal * gst) / 100) * 100) / 100;
+          const lineTotal = Math.round((baseTotal + taxAmt) * 100) / 100;
 
           return {
             medicineId: matchedMed?.id || medicines[0]?.id || '',
-            medicineName: matchedMed?.name || extItem.medicineName,
+            medicineName: extItem.medicineName || matchedMed?.name || 'Medical SKU',
             batchNumber: extItem.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-            expiryDate: extItem.expiryDate || '2027-12-31',
+            expiryDate: extItem.expiryDate || '2028-12-31',
             quantity: qty,
             freeQuantity: Number(extItem.freeQuantity) || 0,
             purchasePrice: price,
-            mrp: Number(extItem.mrp) || matchedMed?.mrp || (price * 1.3),
+            mrp: Number(extItem.mrp) || matchedMed?.mrp || Math.round(price * 1.35 * 100) / 100,
             gstRate: gst,
             taxAmount: taxAmt,
-            totalAmount: baseTotal + taxAmt
+            totalAmount: lineTotal
           };
         });
 
@@ -201,8 +202,8 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       // Recompute tax and total
       const baseTotal = (item.quantity || 0) * (item.purchasePrice || 0);
       const taxRate = item.gstRate || 0;
-      item.taxAmount = (baseTotal * taxRate) / 100;
-      item.totalAmount = baseTotal + item.taxAmount;
+      item.taxAmount = Math.round(((baseTotal * taxRate) / 100) * 100) / 100;
+      item.totalAmount = Math.round((baseTotal + item.taxAmount) * 100) / 100;
 
       updated[index] = item;
       return updated;
