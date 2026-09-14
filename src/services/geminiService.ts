@@ -42,17 +42,77 @@ export function setStoredApiKey(apiKey: string): void {
   }
 }
 
+/**
+ * Fetch available generateContent models directly from user's Gemini API key
+ */
+export async function getSupportedModels(apiKey: string): Promise<string[]> {
+  try {
+    const cleanKey = apiKey.trim();
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.models)) {
+        const candidateModels: string[] = data.models
+          .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .map((m: any) => m.name.replace(/^models\//, ''));
+
+        // Prioritize fast, high-quality multimodal flash models
+        const priorityOrder = [
+          'gemini-2.0-flash',
+          'gemini-1.5-flash-latest',
+          'gemini-1.5-flash-002',
+          'gemini-1.5-flash-001',
+          'gemini-2.5-flash',
+          'gemini-1.5-flash',
+          'gemini-2.0-flash-exp',
+          'gemini-1.5-pro-latest',
+          'gemini-1.5-pro'
+        ];
+
+        const sorted = candidateModels.sort((a, b) => {
+          const idxA = priorityOrder.indexOf(a);
+          const idxB = priorityOrder.indexOf(b);
+          if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+          if (idxA !== -1) return -1;
+          if (idxB !== -1) return 1;
+          return 0;
+        });
+
+        if (sorted.length > 0) {
+          return sorted;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Could not list models from API, falling back to static list', e);
+  }
+
+  return [
+    'gemini-2.0-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-002',
+    'gemini-1.5-flash-001',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash',
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-pro-latest',
+    'gemini-1.5-pro'
+  ];
+}
+
 export async function testApiKey(apiKey: string): Promise<{ success: boolean; message: string; model?: string }> {
   if (!apiKey || !apiKey.trim()) {
     return { success: false, message: 'API key is empty.' };
   }
 
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const cleanKey = apiKey.trim();
+  const modelsToTry = await getSupportedModels(cleanKey);
 
   for (const model of modelsToTry) {
     try {
+      const modelPath = model.startsWith('models/') ? model : `models/${model}`;
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}`,
+        `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(cleanKey)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -72,12 +132,14 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
 
       const errorData = await response.json().catch(() => ({}));
       if (response.status === 400 || response.status === 403) {
-        return { 
-          success: false, 
-          message: errorData?.error?.message || `Authentication failed (${response.status}). Please verify your API key.` 
-        };
+        if (errorData?.error?.message && !errorData.error.message.includes('is not found')) {
+          return { 
+            success: false, 
+            message: errorData.error.message 
+          };
+        }
       }
-    } catch (err: any) {
+    } catch {
       // Try next model
     }
   }
@@ -111,40 +173,48 @@ export async function extractPurchaseBillFromImage(
 
   const { base64, mimeType } = await fileToBase64(file);
 
-  const systemInstruction = `You are a medical pharmacy billing and invoice extraction assistant.
-Analyze the provided medical wholesale/distributor purchase invoice or bill image/PDF and extract all structured data with high precision.
+  const systemInstruction = `You are an expert Indian Pharmaceutical Wholesale Billing and GST Invoice OCR Assistant.
+Analyze the provided medical distributor/wholesaler purchase invoice, delivery challan, or tax invoice photo/document (e.g. Marg ERP, Busy, Tally, dot-matrix, or printed invoices like Shri Laxmi Trading, Suncity Enterprises, Jyoti Enterprises).
 
-Return ONLY a valid JSON object strictly matching this schema:
+Extract all structured fields with maximum precision.
+
+RULES FOR INDIAN PHARMA INVOICES:
+1. Vendor/Supplier: Find Distributor Name at the very top (e.g., "SHRI LAXMI TRADING COMPANY", "SUNCITY ENTERPRISES", "JYOTI ENTERPRISES").
+2. Invoice Number & Date: Find Invoice No (e.g. "CA26/27/4323", "SE/015917", "PB-XXXX") and Date. Normalize Date to YYYY-MM-DD (e.g., 12-09-2026 -> 2026-09-12).
+3. Due Date: If missing, set to 30 days after invoiceDate.
+4. Line Items Table:
+   - medicineName: Extract full product description with pack size (e.g. "MAXO COMBI(80)", "ENO SACHET(60)", "PUDIN HARA CAP(35)", "MANFORCE CONDOM(30)", "UNWANTED 72 TAB(76)", "S D ASHOKARIS 450ML", "MEGLOW ALOE GEL").
+   - batchNumber: Batch or Lot number (e.g. "WA744", "B023F25", "A2026", "ENC26021", "A1920", "BB03125"). If blank/dash, generate a placeholder.
+   - expiryDate: Normalize MM/YY or MM/YYYY (e.g. "11/29" -> "2029-11-30", "7/27" -> "2027-07-31", "1/28" -> "2028-01-31", "12/28" -> "2028-12-31").
+   - quantity: Numeric quantity billed (e.g. 2, 5, 10, 50).
+   - freeQuantity: Free or bonus quantity if any (e.g., +5, +1, +0.5).
+   - purchasePrice: Rate per unit / Net Rate ("RATE" or "N.Rate" column, e.g. 59.32, 47.62, 23.69).
+   - mrp: Maximum Retail Price column (e.g. 80.00, 60.00, 34.00, 315.00). If missing, calculate as 1.3 * purchasePrice.
+   - gstRate: Total GST percentage. In Indian invoices, SGST % + CGST % = total GST % (e.g., SGST 2.5% + CGST 2.5% = 5; SGST 6% + CGST 6% = 12; SGST 9% + CGST 9% = 18; SGST 14% + CGST 14% = 28). If tax is 0 or exempt, use 0. Default to 12 if not specified.
+5. Payment Method: Detect "Cash", "UPI", "Cheque", or "Bank Transfer" (often written in top/bottom stamp like "CASH", "PhonePe", "Union Bank").
+
+Return ONLY a JSON object matching this schema:
 {
-  "vendorName": "Distributor/Supplier Name",
-  "billNumber": "Invoice/Bill Number or PB-XXXX",
-  "invoiceDate": "YYYY-MM-DD (format normalized to YYYY-MM-DD, e.g. 2026-03-15)",
-  "dueDate": "YYYY-MM-DD (or calculated 30 days after invoiceDate if missing)",
+  "vendorName": "Distributor Name",
+  "billNumber": "Invoice Number",
+  "invoiceDate": "YYYY-MM-DD",
+  "dueDate": "YYYY-MM-DD",
   "discountAmount": 0,
-  "paymentMethod": "Bank Transfer",
-  "notes": "Any invoice notes or remarks",
+  "paymentMethod": "Cash",
+  "notes": "GST invoice verified",
   "items": [
     {
-      "medicineName": "Full Medicine Brand Name & Strength (e.g. Augmentin 625 Duo)",
-      "batchNumber": "Batch or Lot number",
-      "expiryDate": "YYYY-MM-DD (e.g. 2027-11-30. If MM/YY is given like 11/27, use last day of month 2027-11-30)",
+      "medicineName": "Product Name",
+      "batchNumber": "Batch No",
+      "expiryDate": "YYYY-MM-DD",
       "quantity": 10,
       "freeQuantity": 0,
-      "purchasePrice": 120.50,
-      "mrp": 160.00,
-      "gstRate": 12
+      "purchasePrice": 59.32,
+      "mrp": 80.00,
+      "gstRate": 18
     }
   ]
-}
-
-Extraction rules:
-- Extract all line items of medicines/drugs listed in the invoice table.
-- Numbers must be numeric without currency symbols (₹, $, commas).
-- If MRP is missing, estimate as 1.25x purchasePrice.
-- If purchasePrice is missing, calculate from line item rate.
-- If GST is not specified, default to 12.
-- Dates must be in YYYY-MM-DD format.
-- Output pure JSON only.`;
+}`;
 
   const payload = {
     contents: [
@@ -166,13 +236,14 @@ Extraction rules:
     }
   };
 
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = await getSupportedModels(apiKey);
   let lastError: Error | null = null;
 
   for (const model of models) {
     try {
+      const modelPath = model.startsWith('models/') ? model : `models/${model}`;
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `https://generativelanguage.googleapis.com/v1beta/${modelPath}:generateContent?key=${encodeURIComponent(apiKey)}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -182,17 +253,21 @@ Extraction rules:
 
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
-        throw new Error(errJson?.error?.message || `Gemini API returned status ${response.status}`);
+        const errMsg = errJson?.error?.message || `Status ${response.status}`;
+        // If this model isn't supported, try next model in priority list
+        if (response.status === 404 || errMsg.includes('not found') || errMsg.includes('not supported')) {
+          continue;
+        }
+        throw new Error(errMsg);
       }
 
       const data = await response.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!rawText) {
-        throw new Error('No content returned from AI model.');
+        throw new Error('No text content returned from Gemini model.');
       }
 
-      // Clean raw text if wrapped in markdown code blocks
       const cleanJson = rawText
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
@@ -201,28 +276,27 @@ Extraction rules:
 
       const parsed: ExtractedPurchaseBill = JSON.parse(cleanJson);
 
-      // Validate & clean items
       if (!Array.isArray(parsed.items)) {
         parsed.items = [];
       }
 
       parsed.items = parsed.items.map((item) => ({
-        medicineName: item.medicineName || 'Unknown Medicine',
+        medicineName: item.medicineName || 'Medical Item',
         batchNumber: item.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-        expiryDate: item.expiryDate || '2027-12-31',
+        expiryDate: item.expiryDate || '2028-12-31',
         quantity: Number(item.quantity) || 1,
         freeQuantity: Number(item.freeQuantity) || 0,
         purchasePrice: Number(item.purchasePrice) || 50,
         mrp: Number(item.mrp) || Number(item.purchasePrice) * 1.3 || 70,
-        gstRate: Number(item.gstRate) || 12
+        gstRate: Number(item.gstRate) !== undefined ? Number(item.gstRate) : 12
       }));
 
       return parsed;
     } catch (err: any) {
       lastError = err;
-      console.warn(`Model ${model} failed:`, err);
+      console.warn(`Model ${model} attempt failed:`, err);
     }
   }
 
-  throw lastError || new Error('Failed to extract bill information from image.');
+  throw lastError || new Error('Failed to extract invoice data. Please verify your Gemini API key in Settings.');
 }
