@@ -1,4 +1,4 @@
-﻿export interface ExtractedBillItem {
+export interface ExtractedBillItem {
   medicineName: string;
   batchNumber?: string;
   expiryDate?: string;
@@ -217,12 +217,12 @@ EXTRACT ALL ITEMS & SUMMARY NUMBERS WITH STRICT MATHEMATICAL INTEGRITY:
    - freeQuantity: Free or bonus units if any (e.g. 0).
    - purchasePrice: Must be the Base Rate BEFORE TAX from the "RATE" column (e.g. 59.32, 32.00, 47.62, 84.68, 23.69, 76.20, 97.46, 38.10, 22.86, 55.08, 53.80, 504.76, 223.81, 271.42, 240.00, 27.63, 54.28, 25.42, 59.05, 16.50, 93.22, 28.00, 30.00). DO NOT use the tax-inclusive N.Rate!
    - mrp: Maximum Retail Price from "MRP" column (e.g. 80.00, 37.00, 60.00, 120.00, 34.00, 95.00, 138.00, 45.63, 28.13, 72.00, 68.00, 666.48, 264.00, 319.00, 315.00, 35.00, 67.66, 65.75, 70.00, 30.00, 130.00, 50.00, 76.00).
-   - gstRate: Total GST % = SGST % + CGST %.
-     * If SGST is 0.00 and CGST is 0.00 -> gstRate = 0 (Nil / Exempt)
-     * If SGST is 2.50 and CGST is 2.50 -> gstRate = 5
-     * If SGST is 6.00 and CGST is 6.00 -> gstRate = 12
-     * If SGST is 9.00 and CGST is 9.00 -> gstRate = 18
-     * If SGST is 14.00 and CGST is 14.00 -> gstRate = 28
+   - gstRate: Total GST % = SGST % + CGST %. You MUST look at the printed SGST and CGST columns for that specific row (do not guess from general product knowledge!):
+     * If row SGST is 0.00 and CGST is 0.00 -> gstRate = 0 (e.g. MANFORCE CONDOM, STAYFREE, MALA D, UNWANTED 72, DABUR HONEY are 0% exempt)
+     * If row SGST is 2.50 and CGST is 2.50 -> gstRate = 5 (e.g. ENO SACHET, MAHABHRINGRAJ, DETTOL LIQ, B TEX OINT, MOOV CREAM, XENDURA MASS, HORLICKS, COMPLAN, REVITAL, PUDIN HARA, ITCH GUARD are 5%)
+     * If row SGST is 6.00 and CGST is 6.00 -> gstRate = 12
+     * If row SGST is 9.00 and CGST is 9.00 -> gstRate = 18 (e.g. MAXO COMBI, ODOMOS CREAM, PONDS, GLOW&LOVELY, VIJHON, GARNIER are 18%)
+     * If row SGST is 14.00 and CGST is 14.00 -> gstRate = 28
 
 4. BILL SUMMARY BOX:
    - subtotal: Taxable subtotal before GST from the summary table (e.g. 3583.67).

@@ -145,7 +145,9 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
 
           const qty = Number(extItem.quantity) || 1;
           const price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
-          const gst = Number(extItem.gstRate) !== undefined ? Number(extItem.gstRate) : (matchedMed?.gstRate || 0);
+          const gst = (typeof extItem.gstRate === 'number' && !isNaN(extItem.gstRate)) 
+            ? extItem.gstRate 
+            : (matchedMed?.gstRate ?? 0);
           const baseTotal = qty * price;
           const taxAmt = Math.round(((baseTotal * gst) / 100) * 100) / 100;
           const lineTotal = Math.round((baseTotal + taxAmt) * 100) / 100;
