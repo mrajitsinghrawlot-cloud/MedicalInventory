@@ -1,0 +1,35 @@
+{
+  "name": "MediStock — Medical Inventory & POS",
+  "short_name": "MediStock",
+  "description": "Professional Medical Shop Inventory Management & Counter POS Billing System",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f766e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Counter Billing (POS)",
+      "url": "/?page=pos",
+      "description": "Sell medicine tablets or strips"
+    },
+    {
+      "name": "Add Medicine Stock",
+      "url": "/?page=inventory",
+      "description": "Add new batch or medicine"
+    },
+    {
+      "name": "Expiry Alerts",
+      "url": "/?page=expiry",
+      "description": "Check expiring batches"
+    }
+  ]
+}
