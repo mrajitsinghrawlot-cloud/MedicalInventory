@@ -170,6 +170,12 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
                   <span>-{formatCurrency(bill.discountAmount)}</span>
                 </div>
               )}
+              {bill.roundOff !== undefined && bill.roundOff !== 0 && (
+                <div className="flex justify-between text-slate-500 font-medium">
+                  <span>Round Off:</span>
+                  <span>{bill.roundOff > 0 ? `+${formatCurrency(bill.roundOff)}` : formatCurrency(bill.roundOff)}</span>
+                </div>
+              )}
               <div className="pt-2 border-t border-slate-200 flex justify-between font-extrabold text-sm text-slate-900">
                 <span>Grand Total:</span>
                 <span className="text-teal-800">{formatCurrency(bill.grandTotal)}</span>

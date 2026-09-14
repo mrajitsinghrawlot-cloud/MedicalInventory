@@ -91,6 +91,7 @@ export interface PurchaseBill {
   subtotal: number;
   taxAmount: number;
   discountAmount: number;
+  roundOff?: number;
   grandTotal: number;
   paidAmount: number;
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';

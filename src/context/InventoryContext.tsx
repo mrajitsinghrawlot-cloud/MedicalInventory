@@ -54,7 +54,7 @@ interface InventoryContextType {
   updateMedicine: (id: string, updates: Partial<Medicine>) => void;
   deleteMedicine: (id: string) => void;
   adjustStock: (medicineId: string, quantityChange: number, type: MovementType, reason: string, performedBy?: string) => void;
-  addPurchaseBill: (bill: Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'>) => void;
+  addPurchaseBill: (bill: Omit<PurchaseBill, 'id'> | (Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'> & { roundOff?: number; grandTotal?: number; subtotal?: number; taxAmount?: number })) => void;
   createSalesBill: (bill: Omit<SalesBill, 'id'>) => SalesBill;
   updateBillPayment: (billId: string, paidAmount: number, status: 'PAID' | 'PARTIAL' | 'UNPAID') => void;
   addVendor: (vendor: Omit<Vendor, 'id' | 'balanceDue' | 'totalPurchases'>) => void;
@@ -341,10 +341,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newSale;
   };
 
-  const addPurchaseBill = (billData: Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'>) => {
-    const subtotal = billData.items.reduce((acc, item) => acc + (item.quantity * item.purchasePrice), 0);
-    const taxAmount = billData.items.reduce((acc, item) => acc + item.taxAmount, 0);
-    const grandTotal = subtotal + taxAmount - (billData.discountAmount || 0);
+  const addPurchaseBill = (billData: Omit<PurchaseBill, 'id'> | Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'>) => {
+    const subtotal = 'subtotal' in billData && typeof billData.subtotal === 'number'
+      ? billData.subtotal
+      : Math.round(billData.items.reduce((acc, item) => acc + (item.quantity * item.purchasePrice), 0) * 100) / 100;
+    const taxAmount = 'taxAmount' in billData && typeof billData.taxAmount === 'number'
+      ? billData.taxAmount
+      : Math.round(billData.items.reduce((acc, item) => acc + item.taxAmount, 0) * 100) / 100;
+    const roundOff = ('roundOff' in billData && typeof billData.roundOff === 'number') ? billData.roundOff : 0;
+    const grandTotal = 'grandTotal' in billData && typeof billData.grandTotal === 'number'
+      ? billData.grandTotal
+      : Math.max(0, Math.round((subtotal + taxAmount - (billData.discountAmount || 0) + roundOff) * 100) / 100);
 
     const billId = `bill-${Date.now()}`;
     const newBill: PurchaseBill = {
@@ -352,6 +359,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       id: billId,
       subtotal,
       taxAmount,
+      roundOff,
       grandTotal,
       paidAmount: billData.paymentStatus === 'PAID' ? grandTotal : (billData.paidAmount || 0)
     };
