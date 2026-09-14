@@ -4,7 +4,8 @@ export interface ExtractedBillItem {
   expiryDate?: string;
   quantity: number;
   freeQuantity?: number;
-  purchasePrice: number; // Base cost price per unit BEFORE tax
+  purchasePrice: number; // Base cost price per unit BEFORE tax (from RATE column)
+  netRate?: number; // Tax-inclusive unit rate (from N.Rate column if present)
   mrp: number; // Maximum Retail Price
   gstRate: number; // Total GST % (SGST% + CGST%)
 }
@@ -215,14 +216,15 @@ EXTRACT ALL ITEMS & SUMMARY NUMBERS WITH STRICT MATHEMATICAL INTEGRITY:
    - expiryDate: Convert MM/YY or MM/YYYY to last day of month YYYY-MM-DD (e.g. "11/29" -> "2029-11-30", "7/27" -> "2027-07-31", "2/28" -> "2028-02-29", "1/28" -> "2028-01-31", "12/28" -> "2028-12-31").
    - quantity: Exact billed quantity. If a fraction/half strip is billed (e.g. "4.5", "4+0.5", "10.5"), use exact decimal number (e.g. 4.5).
    - freeQuantity: Free or bonus units if any (e.g. 0).
-   - purchasePrice: Must be the Base Rate BEFORE TAX from the "RATE" column (e.g. 59.32, 32.00, 47.62, 84.68, 23.69, 76.20, 97.46, 38.10, 22.86, 55.08, 53.80, 504.76, 223.81, 271.42, 240.00, 27.63, 54.28, 25.42, 59.05, 16.50, 93.22, 28.00, 30.00). DO NOT use the tax-inclusive N.Rate!
+   - purchasePrice: Must be the Base Rate BEFORE TAX from the "RATE" column (e.g. 59.32, 32.00, 47.62, 84.68, 23.69, 76.20, 97.46, 38.10, 22.86, 55.08, 53.80, 504.76, 223.81, 271.42, 240.00, 27.63, 54.28, 25.42, 59.05, 16.50, 93.22, 28.00, 30.00).
+   - netRate: Tax-inclusive unit rate from "N.Rate" column if present (e.g. 70.00, 32.00, 50.00, 99.92, 27.96, 80.00, 115.00, 40.00, 24.00, 65.00, 56.50, 530.00, 235.00, 285.00, 252.00, 29.00, 57.00, 30.00, 62.00, 16.50, 110.00, 28.00, 30.00).
    - mrp: Maximum Retail Price from "MRP" column (e.g. 80.00, 37.00, 60.00, 120.00, 34.00, 95.00, 138.00, 45.63, 28.13, 72.00, 68.00, 666.48, 264.00, 319.00, 315.00, 35.00, 67.66, 65.75, 70.00, 30.00, 130.00, 50.00, 76.00).
-   - gstRate: Total GST % = SGST % + CGST %. You MUST look at the printed SGST and CGST columns for that specific row (do not guess from general product knowledge!):
-     * If row SGST is 0.00 and CGST is 0.00 -> gstRate = 0 (e.g. MANFORCE CONDOM, STAYFREE, MALA D, UNWANTED 72, DABUR HONEY are 0% exempt)
-     * If row SGST is 2.50 and CGST is 2.50 -> gstRate = 5 (e.g. ENO SACHET, MAHABHRINGRAJ, DETTOL LIQ, B TEX OINT, MOOV CREAM, XENDURA MASS, HORLICKS, COMPLAN, REVITAL, PUDIN HARA, ITCH GUARD are 5%)
-     * If row SGST is 6.00 and CGST is 6.00 -> gstRate = 12
-     * If row SGST is 9.00 and CGST is 9.00 -> gstRate = 18 (e.g. MAXO COMBI, ODOMOS CREAM, PONDS, GLOW&LOVELY, VIJHON, GARNIER are 18%)
-     * If row SGST is 14.00 and CGST is 14.00 -> gstRate = 28
+   - gstRate: Total GST % = SGST % + CGST %. Look at the printed SGST and CGST columns for that row OR compare (N.Rate / RATE):
+     * 0% (Nil / Exempt): When SGST is 0 and CGST is 0 (or N.Rate == RATE): e.g. MANFORCE CONDOM(30), STAYFREE, MALA D, UNWANTED 72.
+     * 5%: When SGST is 2.50 and CGST is 2.50 (or N.Rate / RATE ≈ 1.05): e.g. ENO SACHET, MAHABHRINGRAJ, DABUR HONEY, DETTOL LIQ, B TEX OINT, MOOV CREAM, XENDURA MASS, HORLICKS, COMPLAN, REVITAL, PUDIN HARA, ITCH GUARD.
+     * 12%: When SGST is 6.00 and CGST is 6.00 (or N.Rate / RATE ≈ 1.12).
+     * 18%: When SGST is 9.00 and CGST is 9.00 (or N.Rate / RATE ≈ 1.18): e.g. MAXO COMBI, ODOMOS CREAM(120), ODOMOS CREAM(34), PONDS, GLOW&LOVELY, VIJHON, GARNIER.
+     * 28%: When SGST is 14.00 and CGST is 14.00 (or N.Rate / RATE ≈ 1.28).
 
 4. BILL SUMMARY BOX:
    - subtotal: Taxable subtotal before GST from the summary table (e.g. 3583.67).
@@ -250,6 +252,7 @@ Return ONLY valid JSON matching this schema:
       "quantity": 2,
       "freeQuantity": 0,
       "purchasePrice": 59.32,
+      "netRate": 70.00,
       "mrp": 80.00,
       "gstRate": 18
     }

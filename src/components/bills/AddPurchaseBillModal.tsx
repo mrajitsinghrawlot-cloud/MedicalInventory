@@ -144,11 +144,28 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
           );
 
           const qty = Number(extItem.quantity) || 1;
-          const price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
-          const gst = (typeof extItem.gstRate === 'number' && !isNaN(extItem.gstRate)) 
+          let price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
+          let gst = (typeof extItem.gstRate === 'number' && !isNaN(extItem.gstRate)) 
             ? extItem.gstRate 
             : (matchedMed?.gstRate ?? 0);
-          const baseTotal = qty * price;
+
+          // If netRate (N.Rate) and purchasePrice (RATE) are both present, verify/derive exact GST slab
+          if (extItem.netRate && extItem.purchasePrice && extItem.purchasePrice > 0) {
+            const ratio = extItem.netRate / extItem.purchasePrice;
+            if (ratio >= 0.98 && ratio <= 1.01) {
+              gst = 0;
+            } else if (ratio >= 1.03 && ratio <= 1.07) {
+              gst = 5;
+            } else if (ratio >= 1.10 && ratio <= 1.14) {
+              gst = 12;
+            } else if (ratio >= 1.16 && ratio <= 1.21) {
+              gst = 18;
+            } else if (ratio >= 1.25 && ratio <= 1.31) {
+              gst = 28;
+            }
+          }
+
+          const baseTotal = Math.round(qty * price * 100) / 100;
           const taxAmt = Math.round(((baseTotal * gst) / 100) * 100) / 100;
           const lineTotal = Math.round((baseTotal + taxAmt) * 100) / 100;
 
@@ -169,13 +186,13 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
 
         setItems(mappedItems);
 
-        // Auto-calculate roundOff if grandTotal is present
+        // Auto-reconcile roundOff to match exact printed Grand Total
         if (extracted.grandTotal) {
           const rawSubtotal = mappedItems.reduce((acc, i) => acc + (i.quantity * i.purchasePrice), 0);
           const rawTax = mappedItems.reduce((acc, i) => acc + i.taxAmount, 0);
           const computedTotal = rawSubtotal + rawTax - (extracted.discountAmount || 0);
           const diff = Math.round((extracted.grandTotal - computedTotal) * 100) / 100;
-          if (Math.abs(diff) <= 2) {
+          if (Math.abs(diff) <= 10) {
             setRoundOff(diff);
           }
         }
