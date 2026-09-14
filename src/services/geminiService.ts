@@ -24,7 +24,100 @@ export interface ExtractedPurchaseBill {
   items: ExtractedBillItem[];
 }
 
+export interface AiUsageStats {
+  totalRequests: number;
+  requestsToday: number;
+  totalTokens: number;
+  tokensToday: number;
+  lastUsedDate: string;
+  dailyLimit: number; // 1,500 requests / day on Google AI Studio Free Tier
+  rpmLimit: number; // 15 requests / minute
+  remainingRequestsToday: number;
+  lastScan?: {
+    model: string;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    timestamp: string;
+  };
+}
+
 const STORAGE_KEY = 'medistock_gemini_api_key';
+const USAGE_STORAGE_KEY = 'medistock_gemini_usage_v1';
+
+export function getAiUsageStats(): AiUsageStats {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const defaultStats: AiUsageStats = {
+    totalRequests: 0,
+    requestsToday: 0,
+    totalTokens: 0,
+    tokensToday: 0,
+    lastUsedDate: todayStr,
+    dailyLimit: 1500,
+    rpmLimit: 15,
+    remainingRequestsToday: 1500
+  };
+
+  try {
+    const raw = localStorage.getItem(USAGE_STORAGE_KEY);
+    if (!raw) return defaultStats;
+    const parsed = JSON.parse(raw);
+    const requestsToday = parsed.lastUsedDate === todayStr ? (parsed.requestsToday || 0) : 0;
+    const tokensToday = parsed.lastUsedDate === todayStr ? (parsed.tokensToday || 0) : 0;
+    const totalRequests = parsed.totalRequests || 0;
+    const totalTokens = parsed.totalTokens || 0;
+
+    return {
+      totalRequests,
+      requestsToday,
+      totalTokens,
+      tokensToday,
+      lastUsedDate: todayStr,
+      dailyLimit: 1500,
+      rpmLimit: 15,
+      remainingRequestsToday: Math.max(0, 1500 - requestsToday),
+      lastScan: parsed.lastScan
+    };
+  } catch {
+    return defaultStats;
+  }
+}
+
+export function recordAiUsage(
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number }, 
+  modelName?: string
+): AiUsageStats {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const current = getAiUsageStats();
+
+  const promptTokens = usageMetadata?.promptTokenCount || 950;
+  const completionTokens = usageMetadata?.candidatesTokenCount || 420;
+  const totalTokens = usageMetadata?.totalTokenCount || (promptTokens + completionTokens);
+
+  const updated: AiUsageStats = {
+    totalRequests: current.totalRequests + 1,
+    requestsToday: (current.lastUsedDate === todayStr ? current.requestsToday : 0) + 1,
+    totalTokens: current.totalTokens + totalTokens,
+    tokensToday: (current.lastUsedDate === todayStr ? current.tokensToday : 0) + totalTokens,
+    lastUsedDate: todayStr,
+    dailyLimit: 1500,
+    rpmLimit: 15,
+    remainingRequestsToday: Math.max(0, 1500 - ((current.lastUsedDate === todayStr ? current.requestsToday : 0) + 1)),
+    lastScan: {
+      model: modelName || 'gemini-2.0-flash',
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      timestamp: new Date().toISOString()
+    }
+  };
+
+  try {
+    localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(updated));
+  } catch {}
+
+  return updated;
+}
 
 export function getStoredApiKey(): string {
   try {
@@ -303,6 +396,8 @@ Return ONLY valid JSON matching this schema:
       }
 
       const data = await response.json();
+      recordAiUsage(data?.usageMetadata, model);
+
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!rawText) {

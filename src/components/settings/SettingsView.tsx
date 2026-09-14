@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Settings as SettingsIcon, 
   ShieldCheck, 
@@ -19,7 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
-import { getStoredApiKey, setStoredApiKey, testApiKey } from '../../services/geminiService';
+import { getStoredApiKey, setStoredApiKey, testApiKey, getAiUsageStats, AiUsageStats } from '../../services/geminiService';
 import confetti from 'canvas-confetti';
 
 export const SettingsView: React.FC = () => {
@@ -49,6 +49,11 @@ export const SettingsView: React.FC = () => {
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [keySavedMessage, setKeySavedMessage] = useState(false);
+  const [usageStats, setUsageStats] = useState<AiUsageStats>(() => getAiUsageStats());
+
+  useEffect(() => {
+    setUsageStats(getAiUsageStats());
+  }, []);
 
   const handleSaveGeminiKey = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -341,6 +346,81 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* AI Usage & Quota Live Tracker */}
+          <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-teal-700" />
+                Google AI Studio Quotas & Usage Monitor
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-full">
+                  Free Tier Active
+                </span>
+                <a
+                  href="https://aistudio.google.com/app/plan_information"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] text-teal-700 hover:text-teal-900 font-semibold inline-flex items-center gap-0.5 hover:underline"
+                >
+                  <span>Google AI Plan Dashboard</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Remaining Today</span>
+                <div className="text-base font-extrabold text-teal-800 mt-0.5">
+                  {usageStats.remainingRequestsToday.toLocaleString()} <span className="text-[11px] text-slate-400 font-normal">/ 1,500</span>
+                </div>
+                <span className="text-[10px] text-slate-500">Free daily requests</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Scans Today</span>
+                <div className="text-base font-extrabold text-slate-800 mt-0.5">
+                  {usageStats.requestsToday.toLocaleString()}
+                </div>
+                <span className="text-[10px] text-slate-500">Bills parsed today</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Total Lifetime Scans</span>
+                <div className="text-base font-extrabold text-slate-800 mt-0.5">
+                  {usageStats.totalRequests.toLocaleString()}
+                </div>
+                <span className="text-[10px] text-slate-500">All-time extractions</span>
+              </div>
+
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">Tokens Consumed</span>
+                <div className="text-base font-extrabold text-slate-800 mt-0.5">
+                  {usageStats.totalTokens.toLocaleString()}
+                </div>
+                <span className="text-[10px] text-slate-500">Prompt + completion</span>
+              </div>
+            </div>
+
+            {/* Quota Progress Bar */}
+            <div className="space-y-1">
+              <div className="flex justify-between text-[11px] text-slate-500 font-medium">
+                <span>Daily Free Quota Usage ({Math.round((usageStats.requestsToday / usageStats.dailyLimit) * 100)}%)</span>
+                <span>{usageStats.requestsToday} of {usageStats.dailyLimit} requests used</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                <div 
+                  className="h-full bg-gradient-to-r from-teal-500 to-emerald-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(2, (usageStats.requestsToday / usageStats.dailyLimit) * 100))}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 pt-0.5">
+                Limits: 15 Requests/Min (RPM) • 1,500 Requests/Day (RPD) • 1M Tokens/Min (TPM). Free quota automatically refreshes daily.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
