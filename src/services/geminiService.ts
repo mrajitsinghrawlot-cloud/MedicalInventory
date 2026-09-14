@@ -42,8 +42,23 @@ export function setStoredApiKey(apiKey: string): void {
   }
 }
 
+const FALLBACK_MODELS = [
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-2.0-flash-exp',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-flash-8b',
+  'gemini-1.5-flash-002',
+  'gemini-1.5-flash-001',
+  'gemini-flash-latest',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-pro-002',
+  'gemini-1.5-pro'
+];
+
 /**
- * Fetch available generateContent models directly from user's Gemini API key
+ * Fetch available multimodal vision models directly from user's Gemini API key
  */
 export async function getSupportedModels(apiKey: string): Promise<string[]> {
   try {
@@ -53,19 +68,34 @@ export async function getSupportedModels(apiKey: string): Promise<string[]> {
       const data = await res.json();
       if (Array.isArray(data?.models)) {
         const candidateModels: string[] = data.models
-          .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+          .filter((m: any) => {
+            const name = (m.name || '').toLowerCase();
+            const isGemini = name.includes('gemini');
+            const isNonVision = 
+              name.includes('tts') || 
+              name.includes('audio') || 
+              name.includes('embedding') || 
+              name.includes('gemma') || 
+              name.includes('aqa') || 
+              name.includes('imagen') || 
+              name.includes('learnlm');
+            const hasGenerate = Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent');
+            return isGemini && !isNonVision && hasGenerate;
+          })
           .map((m: any) => m.name.replace(/^models\//, ''));
 
-        // Prioritize fast, high-quality multimodal flash models
         const priorityOrder = [
           'gemini-2.0-flash',
+          'gemini-2.0-flash-lite',
+          'gemini-2.0-flash-lite-preview-02-05',
+          'gemini-2.0-flash-exp',
           'gemini-1.5-flash-latest',
+          'gemini-1.5-flash-8b',
           'gemini-1.5-flash-002',
           'gemini-1.5-flash-001',
-          'gemini-2.5-flash',
-          'gemini-1.5-flash',
-          'gemini-2.0-flash-exp',
+          'gemini-flash-latest',
           'gemini-1.5-pro-latest',
+          'gemini-1.5-pro-002',
           'gemini-1.5-pro'
         ];
 
@@ -84,20 +114,10 @@ export async function getSupportedModels(apiKey: string): Promise<string[]> {
       }
     }
   } catch (e) {
-    console.warn('Could not list models from API, falling back to static list', e);
+    console.warn('Could not list models from API, using fallback list', e);
   }
 
-  return [
-    'gemini-2.0-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-flash-002',
-    'gemini-1.5-flash-001',
-    'gemini-2.5-flash',
-    'gemini-1.5-flash',
-    'gemini-2.0-flash-exp',
-    'gemini-1.5-pro-latest',
-    'gemini-1.5-pro'
-  ];
+  return FALLBACK_MODELS;
 }
 
 export async function testApiKey(apiKey: string): Promise<{ success: boolean; message: string; model?: string }> {
@@ -107,6 +127,7 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
 
   const cleanKey = apiKey.trim();
   const modelsToTry = await getSupportedModels(cleanKey);
+  let lastErrorMessage = '';
 
   for (const model of modelsToTry) {
     try {
@@ -119,7 +140,7 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
           body: JSON.stringify({
             contents: [
               {
-                parts: [{ text: 'Respond with "OK" if this connection is working.' }]
+                parts: [{ text: 'Respond with "OK".' }]
               }
             ]
           })
@@ -131,20 +152,21 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
       }
 
       const errorData = await response.json().catch(() => ({}));
-      if (response.status === 400 || response.status === 403) {
-        if (errorData?.error?.message && !errorData.error.message.includes('is not found')) {
-          return { 
-            success: false, 
-            message: errorData.error.message 
-          };
-        }
+      lastErrorMessage = errorData?.error?.message || `HTTP ${response.status}`;
+
+      // If key itself is forbidden/invalid across API, report it
+      if (response.status === 400 && lastErrorMessage.includes('API_KEY_INVALID')) {
+        return { success: false, message: 'Invalid API key. Please check your key from Google AI Studio.' };
       }
-    } catch {
-      // Try next model
+    } catch (err: any) {
+      lastErrorMessage = err?.message || 'Network error';
     }
   }
 
-  return { success: false, message: 'Could not connect to Gemini API. Please check your internet connection and API key.' };
+  return { 
+    success: false, 
+    message: lastErrorMessage ? `Connection failed: ${lastErrorMessage}` : 'Could not connect to Gemini API. Please check your API key.' 
+  };
 }
 
 function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
@@ -254,18 +276,18 @@ Return ONLY a JSON object matching this schema:
       if (!response.ok) {
         const errJson = await response.json().catch(() => ({}));
         const errMsg = errJson?.error?.message || `Status ${response.status}`;
-        // If this model isn't supported, try next model in priority list
-        if (response.status === 404 || errMsg.includes('not found') || errMsg.includes('not supported')) {
-          continue;
-        }
-        throw new Error(errMsg);
+        console.warn(`Model ${model} returned error (${response.status}): ${errMsg}. Trying next model...`);
+        lastError = new Error(errMsg);
+        // Continue loop to try next model
+        continue;
       }
 
       const data = await response.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (!rawText) {
-        throw new Error('No text content returned from Gemini model.');
+        console.warn(`Model ${model} returned empty candidates. Trying next model...`);
+        continue;
       }
 
       const cleanJson = rawText
@@ -294,7 +316,7 @@ Return ONLY a JSON object matching this schema:
       return parsed;
     } catch (err: any) {
       lastError = err;
-      console.warn(`Model ${model} attempt failed:`, err);
+      console.warn(`Model ${model} execution error:`, err);
     }
   }
 
