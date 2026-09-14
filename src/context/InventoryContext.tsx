@@ -66,6 +66,7 @@ interface InventoryContextType {
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
   resetToDemoData: () => void;
+  clearAllData: () => void;
 
   // Computed summary counts
   expiredCount: number;
@@ -463,7 +464,21 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setSalesBills(initialSalesBills);
     setStockMovements(initialStockMovements);
     setNotifications(initialNotifications);
-    localStorage.clear();
+    Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+  };
+
+  const clearAllData = () => {
+    setMedicines([]);
+    setVendors([]);
+    setPurchaseBills([]);
+    setSalesBills([]);
+    setStockMovements([]);
+    setNotifications([]);
+    setSelectedMedicine(null);
+    setSelectedBill(null);
+    setSelectedSalesBill(null);
+    setSelectedVendor(null);
+    Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
   };
 
   // Computed summary metrics
@@ -520,6 +535,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         markNotificationRead,
         clearAllNotifications,
         resetToDemoData,
+        clearAllData,
         expiredCount,
         expiringSoonCount,
         lowStockCount,

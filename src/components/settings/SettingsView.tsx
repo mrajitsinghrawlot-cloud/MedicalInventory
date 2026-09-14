@@ -29,6 +29,7 @@ export const SettingsView: React.FC = () => {
     triggerSync, 
     lastSynced, 
     resetToDemoData,
+    clearAllData,
     medicines,
     vendors,
     purchaseBills,
@@ -383,48 +384,90 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Backup, Export & Reset */}
+      {/* Backup, Export & Database Management */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-        <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
-          <Database className="w-4 h-4 text-teal-700" />
-          Data Backup & Demo Reset
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+            <Database className="w-4 h-4 text-teal-700" />
+            Database Management & Demo Mode Control
+          </h3>
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+            <span className="px-2 py-0.5 bg-slate-100 rounded-full">{medicines.length} Medicines</span>
+            <span className="px-2 py-0.5 bg-slate-100 rounded-full">{vendors.length} Vendors</span>
+            <span className="px-2 py-0.5 bg-slate-100 rounded-full">{purchaseBills.length} Bills</span>
+          </div>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+          {/* Card 1: Wipe All Data */}
+          <div className="p-4 bg-rose-50/70 rounded-2xl border border-rose-200 flex flex-col justify-between space-y-3">
             <div>
-              <h4 className="font-bold text-slate-900 text-xs">Download Full JSON Backup</h4>
-              <p className="text-slate-500 mt-1">
-                Save an encrypted JSON snapshot of all inventory batches, supplier directories, invoices, and audit logs.
+              <div className="flex items-center gap-1.5 text-rose-800 font-bold">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>Clear All Data (Production Mode)</span>
+              </div>
+              <p className="text-rose-700/90 mt-1.5 text-[11px] leading-relaxed">
+                Wipes all demo medicines, invoices, sales, and vendors to <strong>0 records</strong>. Starts a completely empty, fresh pharmacy database for real operation.
               </p>
             </div>
             <button
-              onClick={handleExportFullBackup}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors self-start"
+              type="button"
+              onClick={() => {
+                if (window.confirm('⚠️ WIPE ALL DATA?\n\nThis will permanently delete all demo medicines, bills, sales, and supplier records, leaving a clean empty store.\n\nYour Google AI API Key will be preserved.\n\nAre you sure you want to start fresh?')) {
+                  clearAllData();
+                  alert('All demo data cleared successfully! Your pharmacy database is now fresh and ready for real stock entry.');
+                }
+              }}
+              className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors self-start shadow-xs active:scale-95"
             >
-              <Download className="w-4 h-4" />
-              <span>Export JSON Backup</span>
+              <span>Wipe Data & Start Fresh</span>
             </button>
           </div>
 
-          <div className="p-4 bg-rose-50/50 rounded-2xl border border-rose-200 flex flex-col justify-between space-y-3">
+          {/* Card 2: Restore Demo Data */}
+          <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 flex flex-col justify-between space-y-3">
             <div>
-              <h4 className="font-bold text-rose-900 text-xs">Reset Sample Demo Data</h4>
-              <p className="text-rose-700/80 mt-1">
-                Restores original sample dataset of 12 medicines, 4 suppliers, purchase bills, and realistic expiry batches.
+              <div className="flex items-center gap-1.5 text-amber-900 font-bold">
+                <RefreshCw className="w-4 h-4 text-amber-700 shrink-0" />
+                <span>Reload Sample Demo Data</span>
+              </div>
+              <p className="text-amber-800/90 mt-1.5 text-[11px] leading-relaxed">
+                Loads sample catalog of 12 medicines, realistic batches, 4 suppliers, and sample purchase bills for testing.
               </p>
             </div>
             <button
+              type="button"
               onClick={() => {
-                if (confirm('Are you sure you want to reset all data back to original demo values?')) {
+                if (window.confirm('Reload sample demo medicines and invoices?')) {
                   resetToDemoData();
-                  alert('Demo data restored successfully!');
+                  alert('Sample demo data reloaded successfully!');
                 }
               }}
-              className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors self-start shadow-xs"
+              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors self-start shadow-xs active:scale-95"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Reset to Default Demo</span>
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Load Demo Data</span>
+            </button>
+          </div>
+
+          {/* Card 3: Export JSON Backup */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center gap-1.5 text-slate-800 font-bold">
+                <Download className="w-4 h-4 text-slate-600 shrink-0" />
+                <span>Export JSON Backup</span>
+              </div>
+              <p className="text-slate-600 mt-1.5 text-[11px] leading-relaxed">
+                Download an offline JSON snapshot file of all current medicine inventory batches, vendor directories, and audit logs.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleExportFullBackup}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-colors self-start shadow-xs active:scale-95"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Backup</span>
             </button>
           </div>
         </div>

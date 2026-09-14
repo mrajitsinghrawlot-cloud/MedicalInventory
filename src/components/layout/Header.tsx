@@ -42,6 +42,9 @@ export const Header: React.FC<HeaderProps> = ({
     notifications, 
     markNotificationRead,
     clearAllNotifications,
+    clearAllData,
+    resetToDemoData,
+    medicines,
     navigate,
     setGlobalSearchOpen
   } = useInventory();
@@ -226,6 +229,34 @@ export const Header: React.FC<HeaderProps> = ({
                     className="flex-1 px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md text-[11px] font-medium"
                   >
                     {syncStatus === 'offline' ? 'Go Online' : 'Simulate Offline'}
+                  </button>
+                </div>
+
+                <div className="pt-2 mt-2 border-t border-slate-100 space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Demo / Store Data</div>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('⚠️ Clear all demo medicines, invoices, vendors, and sales to start fresh with 0 items?')) {
+                        clearAllData();
+                        setShowSyncMenu(false);
+                        alert('All demo data cleared! Pharmacy database is now 100% clean.');
+                      }
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
+                  >
+                    Wipe All Data (Start Fresh)
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Reload sample demo medicines and invoices?')) {
+                        resetToDemoData();
+                        setShowSyncMenu(false);
+                        alert('Sample demo data reloaded!');
+                      }
+                    }}
+                    className="w-full text-left px-2.5 py-1.5 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    Reload Sample Demo Data
                   </button>
                 </div>
               </div>

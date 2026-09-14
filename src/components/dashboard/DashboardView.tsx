@@ -43,6 +43,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     lowStockCount, 
     totalSalesToday,
     totalSalesCount,
+    clearAllData,
+    resetToDemoData,
     navigate,
     setSelectedMedicine
   } = useInventory();
@@ -56,6 +58,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* Empty Database Fresh Production Mode Banner */}
+      {medicines.length === 0 && (
+        <div className="p-6 bg-gradient-to-r from-teal-50 via-emerald-50 to-cyan-50 border border-teal-200 rounded-3xl text-teal-950 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 bg-emerald-600 text-white text-[11px] font-bold rounded-full">
+                Clean Database
+              </span>
+              <span className="text-xs font-semibold text-teal-800">Production Mode Active</span>
+            </div>
+            <h3 className="font-extrabold text-base text-slate-900">
+              Your Pharmacy Database is Clean & Ready
+            </h3>
+            <p className="text-xs text-slate-600 max-w-xl">
+              All demo items have been wiped. You can now scan real physical wholesaler invoices with AI or add your own inventory stock.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={onOpenAddBill}
+              className="px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 active:scale-95"
+            >
+              <FilePlus className="w-4 h-4" />
+              <span>Scan / Add Purchase Bill</span>
+            </button>
+            <button
+              onClick={onOpenAddMedicine}
+              className="px-3.5 py-2.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold shadow-2xs active:scale-95 flex items-center gap-1.5"
+            >
+              <PackagePlus className="w-4 h-4" />
+              <span>Add Medicine</span>
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Reload sample demo medicines and invoices?')) resetToDemoData();
+              }}
+              className="px-3 py-2.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-xl text-xs font-semibold"
+            >
+              Reload Demo
+            </button>
+          </div>
+        </div>
+      )}
       {/* Primary POS Action Hero Card */}
       <div className="bg-gradient-to-r from-teal-800 via-teal-700 to-emerald-700 text-white rounded-3xl p-5 sm:p-6 shadow-xl shadow-teal-900/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
