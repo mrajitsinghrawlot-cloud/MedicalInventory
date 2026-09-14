@@ -26,23 +26,28 @@ export const PurchaseBillsList: React.FC<PurchaseBillsListProps> = ({
   onOpenAddBill,
   onOpenInvoice
 }) => {
-  const { purchaseBills } = useInventory();
+  const { purchaseBills = [] } = useInventory();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const filteredBills = purchaseBills.filter(bill => {
+  const safeBills = Array.isArray(purchaseBills) ? purchaseBills : [];
+
+  const filteredBills = safeBills.filter(bill => {
+    if (!bill) return false;
+    const billNum = bill.billNumber || '';
+    const venName = bill.vendorName || '';
     const matchesSearch = 
-      bill.billNumber.toLowerCase().includes(search.toLowerCase()) ||
-      bill.vendorName.toLowerCase().includes(search.toLowerCase());
+      billNum.toLowerCase().includes(search.toLowerCase()) ||
+      venName.toLowerCase().includes(search.toLowerCase());
 
     const matchesStatus = statusFilter === 'ALL' || bill.paymentStatus === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const totalSpent = purchaseBills.reduce((acc, b) => acc + b.grandTotal, 0);
-  const totalDue = purchaseBills.reduce((acc, b) => acc + (b.grandTotal - (b.paidAmount || 0)), 0);
+  const totalSpent = safeBills.reduce((acc, b) => acc + (b?.grandTotal || 0), 0);
+  const totalDue = safeBills.reduce((acc, b) => acc + ((b?.grandTotal || 0) - (b?.paidAmount || 0)), 0);
 
-  const getStatusBadge = (status: PurchaseBill['paymentStatus']) => {
+  const getStatusBadge = (status?: PurchaseBill['paymentStatus']) => {
     switch (status) {
       case 'PAID':
         return {
@@ -57,6 +62,7 @@ export const PurchaseBillsList: React.FC<PurchaseBillsListProps> = ({
           icon: Clock
         };
       case 'UNPAID':
+      default:
         return {
           label: 'Payment Pending',
           color: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -198,17 +204,17 @@ export const PurchaseBillsList: React.FC<PurchaseBillsListProps> = ({
 
                       <td className="py-3.5 px-4">
                         <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-medium">
-                          {bill.items.length} Drug SKU{bill.items.length > 1 ? 's' : ''}
+                          {Array.isArray(bill.items) ? bill.items.length : 0} Drug SKU{(Array.isArray(bill.items) ? bill.items.length : 0) !== 1 ? 's' : ''}
                         </span>
                       </td>
 
                       <td className="py-3.5 px-4 font-medium text-slate-600">
-                        {formatCurrency(bill.taxAmount)}
+                        {formatCurrency(bill.taxAmount || 0)}
                       </td>
 
                       <td className="py-3.5 px-4">
                         <div className="font-extrabold text-slate-900 text-sm">
-                          {formatCurrency(bill.grandTotal)}
+                          {formatCurrency(bill.grandTotal || 0)}
                         </div>
                         {balance > 0 && (
                           <div className="text-[10px] text-rose-600 font-semibold">
@@ -248,3 +254,6 @@ export const PurchaseBillsList: React.FC<PurchaseBillsListProps> = ({
     </div>
   );
 };
+
+export default PurchaseBillsList;
+

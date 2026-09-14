@@ -64,20 +64,21 @@ export const exportBillsToCSV = (bills: PurchaseBill[]) => {
     'Payment Method'
   ];
 
-  const rows = bills.map(b => [
-    b.id,
-    b.billNumber,
-    b.invoiceDate,
-    b.dueDate,
-    `"${b.vendorName.replace(/"/g, '""')}"`,
-    b.items.length,
-    b.subtotal.toFixed(2),
-    b.taxAmount.toFixed(2),
-    b.discountAmount.toFixed(2),
-    b.grandTotal.toFixed(2),
-    b.paidAmount.toFixed(2),
-    b.paymentStatus,
-    b.paymentMethod
+  const safeBills = Array.isArray(bills) ? bills : [];
+  const rows = safeBills.map(b => [
+    b.id || '',
+    b.billNumber || '',
+    b.invoiceDate || '',
+    b.dueDate || '',
+    `"${(b.vendorName || '').replace(/"/g, '""')}"`,
+    Array.isArray(b.items) ? b.items.length : 0,
+    (b.subtotal || 0).toFixed(2),
+    (b.taxAmount || 0).toFixed(2),
+    (b.discountAmount || 0).toFixed(2),
+    (b.grandTotal || 0).toFixed(2),
+    (b.paidAmount || 0).toFixed(2),
+    b.paymentStatus || 'UNPAID',
+    b.paymentMethod || 'Bank Transfer'
   ]);
 
   const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');

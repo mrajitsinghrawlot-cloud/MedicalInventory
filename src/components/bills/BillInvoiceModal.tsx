@@ -133,7 +133,7 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {bill.items.map((item, idx) => (
+              {(bill.items || []).map((item, idx) => (
                 <tr key={idx}>
                   <td className="py-3 px-3 text-slate-400">{idx + 1}</td>
                   <td className="py-3 px-3 font-semibold text-slate-900">
@@ -145,9 +145,9 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
                   <td className="py-3 px-3 font-mono text-slate-600">{item.batchNumber}</td>
                   <td className="py-3 px-3 text-slate-600">{formatDate(item.expiryDate)}</td>
                   <td className="py-3 px-2 text-center font-bold text-slate-900">{item.quantity}</td>
-                  <td className="py-3 px-3 text-right text-slate-700">{formatCurrency(item.purchasePrice)}</td>
-                  <td className="py-3 px-2 text-center text-slate-500">{item.gstRate}%</td>
-                  <td className="py-3 px-3 text-right font-bold text-slate-900">{formatCurrency(item.totalAmount)}</td>
+                  <td className="py-3 px-3 text-right text-slate-700">{formatCurrency(item.purchasePrice || 0)}</td>
+                  <td className="py-3 px-2 text-center text-slate-500">{item.gstRate ?? 12}%</td>
+                  <td className="py-3 px-3 text-right font-bold text-slate-900">{formatCurrency(item.totalAmount || 0)}</td>
                 </tr>
               ))}
             </tbody>
@@ -216,3 +216,6 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
     </AnimatePresence>
   );
 };
+
+export default BillInvoiceModal;
+

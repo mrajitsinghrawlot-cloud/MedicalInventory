@@ -829,3 +829,4 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   );
 };
 
+export default AddPurchaseBillModal;
