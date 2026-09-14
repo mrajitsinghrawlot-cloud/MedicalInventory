@@ -8,27 +8,43 @@ import { AndroidNavDrawer } from './components/layout/AndroidNavDrawer';
 import { QuickActionFab } from './components/layout/QuickActionFab';
 import { GlobalSearchModal } from './components/layout/GlobalSearchModal';
 
-// Fast Lazy-loaded Views (Code Splitting)
-const DashboardView = lazy(() => import('./components/dashboard/DashboardView').then(m => ({ default: m.DashboardView })));
-const PosCounterBilling = lazy(() => import('./components/pos/PosCounterBilling').then(m => ({ default: m.PosCounterBilling })));
-const SalesHistoryView = lazy(() => import('./components/pos/SalesHistoryView').then(m => ({ default: m.SalesHistoryView })));
-const MedicineList = lazy(() => import('./components/inventory/MedicineList').then(m => ({ default: m.MedicineList })));
-const AlertsCenter = lazy(() => import('./components/alerts/AlertsCenter').then(m => ({ default: m.AlertsCenter })));
-const PurchaseBillsList = lazy(() => import('./components/bills/PurchaseBillsList').then(m => ({ default: m.PurchaseBillsList })));
-const VendorsList = lazy(() => import('./components/vendors/VendorsList').then(m => ({ default: m.VendorsList })));
-const StockMovementsList = lazy(() => import('./components/audit/StockMovementsList').then(m => ({ default: m.StockMovementsList })));
-const ReportsView = lazy(() => import('./components/reports/ReportsView').then(m => ({ default: m.ReportsView })));
-const SettingsView = lazy(() => import('./components/settings/SettingsView').then(m => ({ default: m.SettingsView })));
+// Fast Lazy-loaded Views with Automatic Stale Chunk Auto-Recovery
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>
+): React.LazyExoticComponent<T> {
+  return lazy(() =>
+    factory().catch((error) => {
+      // Auto-reload on stale build chunk so user never gets MIME text/html errors
+      const hasReloaded = window.sessionStorage.getItem('chunk_reload_attempt');
+      if (!hasReloaded) {
+        window.sessionStorage.setItem('chunk_reload_attempt', 'true');
+        window.location.reload();
+      }
+      throw error;
+    })
+  );
+}
+
+const DashboardView = lazyWithRetry(() => import('./components/dashboard/DashboardView').then(m => ({ default: m.DashboardView })));
+const PosCounterBilling = lazyWithRetry(() => import('./components/pos/PosCounterBilling').then(m => ({ default: m.PosCounterBilling })));
+const SalesHistoryView = lazyWithRetry(() => import('./components/pos/SalesHistoryView').then(m => ({ default: m.SalesHistoryView })));
+const MedicineList = lazyWithRetry(() => import('./components/inventory/MedicineList').then(m => ({ default: m.MedicineList })));
+const AlertsCenter = lazyWithRetry(() => import('./components/alerts/AlertsCenter').then(m => ({ default: m.AlertsCenter })));
+const PurchaseBillsList = lazyWithRetry(() => import('./components/bills/PurchaseBillsList').then(m => ({ default: m.PurchaseBillsList })));
+const VendorsList = lazyWithRetry(() => import('./components/vendors/VendorsList').then(m => ({ default: m.VendorsList })));
+const StockMovementsList = lazyWithRetry(() => import('./components/audit/StockMovementsList').then(m => ({ default: m.StockMovementsList })));
+const ReportsView = lazyWithRetry(() => import('./components/reports/ReportsView').then(m => ({ default: m.ReportsView })));
+const SettingsView = lazyWithRetry(() => import('./components/settings/SettingsView').then(m => ({ default: m.SettingsView })));
 
 // Fast Lazy-loaded Modals
-const AddMedicineModal = lazy(() => import('./components/inventory/AddMedicineModal').then(m => ({ default: m.AddMedicineModal })));
-const MedicineDetailModal = lazy(() => import('./components/inventory/MedicineDetailModal').then(m => ({ default: m.MedicineDetailModal })));
-const StockAdjustmentModal = lazy(() => import('./components/inventory/StockAdjustmentModal').then(m => ({ default: m.StockAdjustmentModal })));
-const BarcodeScannerModal = lazy(() => import('./components/inventory/BarcodeScannerModal').then(m => ({ default: m.BarcodeScannerModal })));
-const AddPurchaseBillModal = lazy(() => import('./components/bills/AddPurchaseBillModal').then(m => ({ default: m.AddPurchaseBillModal })));
-const BillInvoiceModal = lazy(() => import('./components/bills/BillInvoiceModal').then(m => ({ default: m.BillInvoiceModal })));
-const SalesBillInvoiceModal = lazy(() => import('./components/pos/SalesBillInvoiceModal').then(m => ({ default: m.SalesBillInvoiceModal })));
-const AddVendorModal = lazy(() => import('./components/vendors/AddVendorModal').then(m => ({ default: m.AddVendorModal })));
+const AddMedicineModal = lazyWithRetry(() => import('./components/inventory/AddMedicineModal').then(m => ({ default: m.AddMedicineModal })));
+const MedicineDetailModal = lazyWithRetry(() => import('./components/inventory/MedicineDetailModal').then(m => ({ default: m.MedicineDetailModal })));
+const StockAdjustmentModal = lazyWithRetry(() => import('./components/inventory/StockAdjustmentModal').then(m => ({ default: m.StockAdjustmentModal })));
+const BarcodeScannerModal = lazyWithRetry(() => import('./components/inventory/BarcodeScannerModal').then(m => ({ default: m.BarcodeScannerModal })));
+const AddPurchaseBillModal = lazyWithRetry(() => import('./components/bills/AddPurchaseBillModal').then(m => ({ default: m.AddPurchaseBillModal })));
+const BillInvoiceModal = lazyWithRetry(() => import('./components/bills/BillInvoiceModal').then(m => ({ default: m.BillInvoiceModal })));
+const SalesBillInvoiceModal = lazyWithRetry(() => import('./components/pos/SalesBillInvoiceModal').then(m => ({ default: m.SalesBillInvoiceModal })));
+const AddVendorModal = lazyWithRetry(() => import('./components/vendors/AddVendorModal').then(m => ({ default: m.AddVendorModal })));
 
 import { Medicine, PurchaseBill, SalesBill } from './types/inventory';
 
