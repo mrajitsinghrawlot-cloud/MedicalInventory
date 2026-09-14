@@ -197,53 +197,54 @@ export async function extractPurchaseBillFromImage(
 
   const { base64, mimeType } = await fileToBase64(file);
 
-  const systemInstruction = `You are a specialized Indian Pharmaceutical Accounting and GST Invoice OCR Assistant.
-You have deep expertise in Marg ERP, Busy, Tally, Dot-matrix, and Thermal invoices from Indian wholesale medicine distributors.
+  const systemInstruction = `You are a precision Indian Pharmaceutical Wholesale Billing and GST Invoice OCR Assistant.
+You specialize in reading Indian pharmaceutical distributor invoices (Marg ERP, Busy, Tally, Dot-matrix, and Laser printed bills like Shri Laxmi Trading Company, Suncity Enterprises, Jyoti Enterprises).
 
-CRITICAL MATHEMATICAL RULES FOR ACCURACY:
-1. PURCHASE RATE (TAX EXCLUSIVE):
-   - In Indian pharma invoices, the "RATE" column represents the Base Cost Price (EXCLUDING GST).
-   - The "N.Rate" or "Net Rate" column is the rate AFTER adding GST (e.g. Rate 59.32 + 18% GST = Net Rate 70.00).
-   - YOU MUST ALWAYS EXTRACT THE TAX-EXCLUSIVE BASE RATE as "purchasePrice" (e.g., 59.32, NOT 70.00).
-   - If only Net Rate is available: purchasePrice = NetRate / (1 + gstRate/100).
-   - If line has a trade or scheme discount, purchasePrice should be the effective discounted base rate per unit: (Line Amount before GST) / quantity.
+EXTRACT ALL ITEMS & SUMMARY NUMBERS WITH STRICT MATHEMATICAL INTEGRITY:
 
-2. GST RATE CALCULATION:
-   - In Indian invoices, GST is split into "SGST" and "CGST".
-   - Total GST % = SGST % + CGST % (e.g., SGST 9% + CGST 9% = 18% GST; SGST 2.5% + CGST 2.5% = 5% GST; SGST 6% + CGST 6% = 12% GST; SGST 14% + CGST 14% = 28% GST).
-   - Never extract only one half (e.g., 9% SGST + 9% CGST is 18%, NOT 9%).
+1. DISTRIBUTOR / VENDOR NAME:
+   - Extract the full Distributor/Wholesaler Company Name printed at the top (e.g. "SHRI LAXMI TRADING COMPANY", "SUNCITY ENTERPRISES", "JYOTI ENTERPRISES").
 
-3. EXPIRY DATE NORMALIZATION:
-   - Convert shorthand MM/YY or MM/YYYY to last day of the month YYYY-MM-DD:
-     * "11/29" -> "2029-11-30"
-     * "7/27" -> "2027-07-31"
-     * "2/28" -> "2028-02-29"
-     * "1/26" or "2/36" -> "2026-01-31" or "2036-02-29"
-     * "12/28" -> "2028-12-31"
+2. INVOICE NUMBER & DATE:
+   - Invoice / Bill #: e.g. "CA26/27/4323", "SE/015917", "CS002997".
+   - Invoice Date: Normalize to YYYY-MM-DD (e.g. "12-09-2026" -> "2026-09-12").
 
-4. BILL SUMMARY TOTALS:
-   - Extract "subtotal" (Taxable Sub Total), "taxAmount" (Total SGST + CGST), "discountAmount" (Scheme Discount / Cash Discount), and "grandTotal" (Grand Total / Party Total) directly from the summary table at the bottom.
+3. LINE ITEMS (EVERY ROW):
+   - medicineName: Full exact product brand name with pack/strength (e.g. "MAXO COMBI(80)", "STAYFREE REG(37)", "ENO SACHET(60)", "ODOMOS CREAM(120) <Lot>", "MAHABHRINGRAJ H/O(95)", "PUDIN HARA CAP(35)", "MANFORCE CONDOM(30)", "UNWANTED 72 TAB(76)", "S D ASHOKARIS 450ml").
+   - batchNumber: Batch or lot number (e.g. "WA744", "B023F25", "A2026", "ENC26021", "A1920", "BD03125").
+   - expiryDate: Convert MM/YY or MM/YYYY to last day of month YYYY-MM-DD (e.g. "11/29" -> "2029-11-30", "7/27" -> "2027-07-31", "2/28" -> "2028-02-29", "1/28" -> "2028-01-31", "12/28" -> "2028-12-31").
+   - quantity: Exact billed quantity. If a fraction/half strip is billed (e.g. "4.5", "4+0.5", "10.5"), use exact decimal number (e.g. 4.5).
+   - freeQuantity: Free or bonus units if any (e.g. 0).
+   - purchasePrice: Must be the Base Rate BEFORE TAX from the "RATE" column (e.g. 59.32, 32.00, 47.62, 84.68, 23.69, 76.20, 97.46, 38.10, 22.86, 55.08, 53.80, 504.76, 223.81, 271.42, 240.00, 27.63, 54.28, 25.42, 59.05, 16.50, 93.22, 28.00, 30.00). DO NOT use the tax-inclusive N.Rate!
+   - mrp: Maximum Retail Price from "MRP" column (e.g. 80.00, 37.00, 60.00, 120.00, 34.00, 95.00, 138.00, 45.63, 28.13, 72.00, 68.00, 666.48, 264.00, 319.00, 315.00, 35.00, 67.66, 65.75, 70.00, 30.00, 130.00, 50.00, 76.00).
+   - gstRate: Total GST % = SGST % + CGST %.
+     * If SGST is 0.00 and CGST is 0.00 -> gstRate = 0 (Nil / Exempt)
+     * If SGST is 2.50 and CGST is 2.50 -> gstRate = 5
+     * If SGST is 6.00 and CGST is 6.00 -> gstRate = 12
+     * If SGST is 9.00 and CGST is 9.00 -> gstRate = 18
+     * If SGST is 14.00 and CGST is 14.00 -> gstRate = 28
 
-5. QUANTITY & BATCHES:
-   - quantity: Exact integer or decimal quantity billed.
-   - freeQuantity: Any free/bonus units (e.g. "+5", "+1").
-   - batchNumber: Batch/Lot code (e.g. "WA744", "B023F25", "A2026", "ENC26021", "A1920", "BD03125").
+4. BILL SUMMARY BOX:
+   - subtotal: Taxable subtotal before GST from the summary table (e.g. 3583.67).
+   - taxAmount: Total GST tax (SGST + CGST, e.g. 143.36 + 143.36 = 286.72).
+   - discountAmount: Scheme discount or cash discount (e.g. 0.0 or 84.41).
+   - grandTotal: Final invoice total (e.g. 3870.00, 571.00, 1012.00).
 
 Return ONLY valid JSON matching this schema:
 {
-  "vendorName": "Distributor Name (e.g. SHRI LAXMI TRADING COMPANY, SUNCITY ENTERPRISES, JYOTI ENTERPRISES)",
-  "billNumber": "Invoice Number (e.g. CA26/27/4323, SE/015917, CS002997)",
-  "invoiceDate": "YYYY-MM-DD",
-  "dueDate": "YYYY-MM-DD",
+  "vendorName": "SHRI LAXMI TRADING COMPANY",
+  "billNumber": "CA26/27/4323",
+  "invoiceDate": "2026-09-12",
+  "dueDate": "2026-10-12",
   "subtotal": 3583.67,
   "taxAmount": 286.72,
   "discountAmount": 0.0,
-  "grandTotal": 3870.0,
+  "grandTotal": 3870.00,
   "paymentMethod": "Cash",
-  "notes": "Verified against wholesale distributor invoice",
+  "notes": "Verified against wholesale distributor tax invoice",
   "items": [
     {
-      "medicineName": "Full Medicine Name & Pack (e.g. MAXO COMBI(80), ENO SACHET(60), S D ASHOKARIS 450ml)",
+      "medicineName": "MAXO COMBI(80)",
       "batchNumber": "WA744",
       "expiryDate": "2029-11-30",
       "quantity": 2,

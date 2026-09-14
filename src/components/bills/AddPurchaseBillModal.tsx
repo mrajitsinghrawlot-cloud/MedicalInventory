@@ -37,7 +37,7 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const { medicines, vendors, addPurchaseBill } = useInventory();
+  const { medicines, addMedicine, vendors, addVendor, addPurchaseBill } = useInventory();
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [billNumber, setBillNumber] = useState(`PB-2026-${Math.floor(100 + Math.random() * 900)}`);
@@ -48,24 +48,26 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
     return d.toISOString().split('T')[0];
   });
   const [vendorId, setVendorId] = useState(vendors[0]?.id || '');
+  const [vendorName, setVendorName] = useState(vendors[0]?.name || 'SHRI LAXMI TRADING COMPANY');
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'UNPAID'>('PAID');
-  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note'>('Bank Transfer');
+  const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note'>('Cash');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [roundOff, setRoundOff] = useState<number>(0);
   const [notes, setNotes] = useState('Stock verified & batch cold-chain inspected upon receipt');
 
   const [items, setItems] = useState<PurchaseBillItem[]>([
     {
-      medicineId: medicines[0]?.id || '',
-      medicineName: medicines[0]?.name || '',
+      medicineId: medicines[0]?.id || 'new-med-1',
+      medicineName: medicines[0]?.name || 'MAXO COMBI(80)',
       batchNumber: `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-      expiryDate: '2027-12-31',
-      quantity: 50,
+      expiryDate: '2028-12-31',
+      quantity: 10,
       freeQuantity: 0,
-      purchasePrice: medicines[0]?.purchasePrice || 100,
-      mrp: medicines[0]?.mrp || 150,
+      purchasePrice: 50,
+      mrp: 75,
       gstRate: 12,
-      taxAmount: 600,
-      totalAmount: 5600
+      taxAmount: 60,
+      totalAmount: 560
     }
   ]);
 
@@ -103,9 +105,7 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset input value so same file can be re-selected if desired
     e.target.value = '';
-
     setIsAiExtracting(true);
     setAiError(null);
     setAiSuccessMessage(null);
@@ -113,8 +113,9 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
     try {
       const extracted: ExtractedPurchaseBill = await extractPurchaseBillFromImage(file);
 
-      // Auto-match vendor if possible
+      // Auto-populate distributor/vendor name
       if (extracted.vendorName) {
+        setVendorName(extracted.vendorName);
         const lowerVendor = extracted.vendorName.toLowerCase();
         const matchedVendor = vendors.find(v => 
           lowerVendor.includes(v.name.toLowerCase()) || 
@@ -135,29 +136,28 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       // Map extracted line items
       if (extracted.items && extracted.items.length > 0) {
         const mappedItems: PurchaseBillItem[] = extracted.items.map((extItem) => {
-          // Look for matching medicine in inventory
           const lowerName = extItem.medicineName.toLowerCase();
           const matchedMed = medicines.find(m => 
+            m.name.toLowerCase() === lowerName ||
             m.name.toLowerCase().includes(lowerName) || 
-            lowerName.includes(m.name.toLowerCase()) ||
-            m.genericName.toLowerCase().includes(lowerName)
+            lowerName.includes(m.name.toLowerCase())
           );
 
           const qty = Number(extItem.quantity) || 1;
           const price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
-          const gst = Number(extItem.gstRate) !== undefined ? Number(extItem.gstRate) : (matchedMed?.gstRate || 12);
+          const gst = Number(extItem.gstRate) !== undefined ? Number(extItem.gstRate) : (matchedMed?.gstRate || 0);
           const baseTotal = qty * price;
           const taxAmt = Math.round(((baseTotal * gst) / 100) * 100) / 100;
           const lineTotal = Math.round((baseTotal + taxAmt) * 100) / 100;
 
           return {
-            medicineId: matchedMed?.id || medicines[0]?.id || '',
-            medicineName: extItem.medicineName || matchedMed?.name || 'Medical SKU',
+            medicineId: matchedMed?.id || `new-med-${Math.random().toString(36).slice(2, 7)}`,
+            medicineName: extItem.medicineName,
             batchNumber: extItem.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
             expiryDate: extItem.expiryDate || '2028-12-31',
             quantity: qty,
             freeQuantity: Number(extItem.freeQuantity) || 0,
-            purchasePrice: price,
+            purchasePrice: Math.round(price * 100) / 100,
             mrp: Number(extItem.mrp) || matchedMed?.mrp || Math.round(price * 1.35 * 100) / 100,
             gstRate: gst,
             taxAmount: taxAmt,
@@ -166,12 +166,24 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
         });
 
         setItems(mappedItems);
+
+        // Auto-calculate roundOff if grandTotal is present
+        if (extracted.grandTotal) {
+          const rawSubtotal = mappedItems.reduce((acc, i) => acc + (i.quantity * i.purchasePrice), 0);
+          const rawTax = mappedItems.reduce((acc, i) => acc + i.taxAmount, 0);
+          const computedTotal = rawSubtotal + rawTax - (extracted.discountAmount || 0);
+          const diff = Math.round((extracted.grandTotal - computedTotal) * 100) / 100;
+          if (Math.abs(diff) <= 2) {
+            setRoundOff(diff);
+          }
+        }
+
         setAiSuccessMessage(`Successfully extracted ${mappedItems.length} items from ${extracted.vendorName || 'Invoice'}!`);
         try {
-          confetti({ particleCount: 40, spread: 60 });
+          confetti({ particleCount: 50, spread: 65 });
         } catch {}
       } else {
-        setAiSuccessMessage('Invoice metadata extracted. Please add items if table was not clearly visible.');
+        setAiSuccessMessage('Invoice metadata extracted. Please check line items.');
       }
     } catch (err: any) {
       console.error('AI Extraction failed:', err);
@@ -186,22 +198,22 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       const updated = [...prev];
       const item = { ...updated[index], [field]: val };
 
-      // If medicine changed, auto-fill base price and name
-      if (field === 'medicineId') {
-        const med = medicines.find(m => m.id === val);
+      // If medicine name changed, check for existing SKU match
+      if (field === 'medicineName') {
+        const med = medicines.find(m => m.name.toLowerCase() === String(val).toLowerCase());
         if (med) {
-          item.medicineName = med.name;
+          item.medicineId = med.id;
           item.purchasePrice = med.purchasePrice;
           item.mrp = med.mrp;
-          item.batchNumber = med.batchNumber;
-          item.expiryDate = med.expiryDate;
-          item.gstRate = med.gstRate ?? 12;
+          item.batchNumber = med.batchNumber || item.batchNumber;
+          item.expiryDate = med.expiryDate || item.expiryDate;
+          item.gstRate = med.gstRate ?? item.gstRate;
         }
       }
 
       // Recompute tax and total
-      const baseTotal = (item.quantity || 0) * (item.purchasePrice || 0);
-      const taxRate = item.gstRate || 0;
+      const baseTotal = (Number(item.quantity) || 0) * (Number(item.purchasePrice) || 0);
+      const taxRate = Number(item.gstRate) || 0;
       item.taxAmount = Math.round(((baseTotal * taxRate) / 100) * 100) / 100;
       item.totalAmount = Math.round((baseTotal + item.taxAmount) * 100) / 100;
 
@@ -211,16 +223,15 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   };
 
   const handleAddItem = () => {
-    const firstMed = medicines[0];
     const newItem: PurchaseBillItem = {
-      medicineId: firstMed?.id || '',
-      medicineName: firstMed?.name || 'Selected Medicine',
+      medicineId: `new-med-${Date.now()}`,
+      medicineName: '',
       batchNumber: `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-      expiryDate: '2027-12-31',
+      expiryDate: '2028-12-31',
       quantity: 10,
       freeQuantity: 0,
-      purchasePrice: firstMed?.purchasePrice || 50,
-      mrp: firstMed?.mrp || 80,
+      purchasePrice: 50,
+      mrp: 80,
       gstRate: 12,
       taxAmount: 60,
       totalAmount: 560
@@ -230,6 +241,8 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
 
   const handleScannedInwardItem = (scannedMed: Medicine) => {
     const effectiveGstRate = scannedMed.gstRate ?? 12;
+    const baseTotal = 20 * scannedMed.purchasePrice;
+    const taxAmt = Math.round(((baseTotal * effectiveGstRate) / 100) * 100) / 100;
     const newItem: PurchaseBillItem = {
       medicineId: scannedMed.id,
       medicineName: scannedMed.name,
@@ -240,8 +253,8 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       purchasePrice: scannedMed.purchasePrice,
       mrp: scannedMed.mrp,
       gstRate: effectiveGstRate,
-      taxAmount: (20 * scannedMed.purchasePrice * effectiveGstRate) / 100,
-      totalAmount: (20 * scannedMed.purchasePrice) * (1 + effectiveGstRate / 100)
+      taxAmount: taxAmt,
+      totalAmount: Math.round((baseTotal + taxAmt) * 100) / 100
     };
     setItems(prev => [...prev, newItem]);
     setIsScannerOpen(false);
@@ -253,9 +266,9 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
     }
   };
 
-  const calculatedSubtotal = items.reduce((acc, i) => acc + (i.quantity * i.purchasePrice), 0);
-  const calculatedTax = items.reduce((acc, i) => acc + i.taxAmount, 0);
-  const calculatedGrandTotal = Math.max(0, calculatedSubtotal + calculatedTax - discountAmount);
+  const calculatedSubtotal = Math.round(items.reduce((acc, i) => acc + (i.quantity * i.purchasePrice), 0) * 100) / 100;
+  const calculatedTax = Math.round(items.reduce((acc, i) => acc + i.taxAmount, 0) * 100) / 100;
+  const calculatedGrandTotal = Math.max(0, Math.round((calculatedSubtotal + calculatedTax - (discountAmount || 0) + (roundOff || 0)) * 100) / 100);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,15 +284,77 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       return;
     }
 
-    const vendor = vendors.find(v => v.id === vendorId);
+    // Auto-resolve or register vendor
+    let targetVendorId = vendorId;
+    const matchedVendor = vendors.find(v => 
+      v.id === vendorId || 
+      v.name.toLowerCase() === vendorName.trim().toLowerCase()
+    );
+
+    if (matchedVendor) {
+      targetVendorId = matchedVendor.id;
+    } else if (vendorName.trim()) {
+      const newVenId = `ven-${Date.now()}`;
+      addVendor({
+        name: vendorName.trim(),
+        contactPerson: 'Distributor Representative',
+        phone: '+91 94144 78218',
+        email: 'billing@distributor.com',
+        address: 'Medical Market, MGH Road',
+        city: 'Jodhpur',
+        gstin: '08AABPI5309K1ZR',
+        dlNumber: 'DL-20B/21B-48190',
+        paymentTermsDays: 30,
+        rating: 5.0,
+        status: 'Active'
+      });
+      targetVendorId = newVenId;
+    }
+
+    // Auto-register new medicines into store inventory if they don't exist yet
+    const finalizedItems: PurchaseBillItem[] = items.map(item => {
+      const trimmedName = item.medicineName.trim() || 'Medical Product';
+      const matchedMed = medicines.find(m => m.name.toLowerCase() === trimmedName.toLowerCase());
+      let medId = matchedMed?.id || item.medicineId;
+
+      if (!matchedMed) {
+        medId = `med-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        addMedicine({
+          name: trimmedName,
+          genericName: trimmedName,
+          category: 'Medical Supplies',
+          form: 'Tablet',
+          strength: 'Standard',
+          manufacturer: vendorName.trim() || 'Pharmaceutical Distributor',
+          batchNumber: item.batchNumber,
+          barcode: String(Math.floor(100000000000 + Math.random() * 900000000000)),
+          expiryDate: item.expiryDate,
+          purchasePrice: item.purchasePrice,
+          mrp: item.mrp || item.purchasePrice * 1.35,
+          unitsPerPack: 10,
+          stockQuantity: 0,
+          minStockThreshold: 10,
+          rackLocation: 'Inward Shelf',
+          scheduleType: 'OTC',
+          requiresPrescription: false,
+          gstRate: item.gstRate
+        });
+      }
+
+      return {
+        ...item,
+        medicineId: medId,
+        medicineName: trimmedName
+      };
+    });
 
     addPurchaseBill({
       billNumber,
       invoiceDate,
       dueDate,
-      vendorId,
-      vendorName: vendor?.name || 'Authorized Supplier',
-      items,
+      vendorId: targetVendorId,
+      vendorName: vendorName.trim() || 'Authorized Supplier',
+      items: finalizedItems,
       discountAmount,
       paidAmount: paymentStatus === 'PAID' ? calculatedGrandTotal : 0,
       paymentStatus,
@@ -444,15 +519,24 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Supplier / Vendor</label>
-              <select
-                value={vendorId}
-                onChange={e => setVendorId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:outline-none focus:border-teal-600"
-              >
+              <input
+                type="text"
+                list="vendor-datalist-options"
+                value={vendorName}
+                onChange={e => {
+                  const val = e.target.value;
+                  setVendorName(val);
+                  const matched = vendors.find(v => v.name.toLowerCase() === val.toLowerCase());
+                  if (matched) setVendorId(matched.id);
+                }}
+                placeholder="Supplier name"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:outline-none focus:border-teal-600"
+              />
+              <datalist id="vendor-datalist-options">
                 {vendors.map(v => (
-                  <option key={v.id} value={v.id}>{v.name}</option>
+                  <option key={v.id} value={v.name} />
                 ))}
-              </select>
+              </datalist>
             </div>
 
             <div>
@@ -513,70 +597,78 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
               </div>
             </div>
 
-            <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-              <table className="w-full text-left text-xs">
+            <datalist id="medicine-datalist-options">
+              {medicines.map(m => (
+                <option key={m.id} value={m.name} />
+              ))}
+            </datalist>
+
+            <div className="border border-slate-200 rounded-2xl overflow-x-auto shadow-2xs">
+              <table className="w-full text-left text-xs min-w-[700px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase">
                   <tr>
-                    <th className="py-2.5 px-3">Medicine SKU</th>
-                    <th className="py-2.5 px-3">Batch #</th>
-                    <th className="py-2.5 px-3">Expiry</th>
-                    <th className="py-2.5 px-2">Qty</th>
-                    <th className="py-2.5 px-2">Free</th>
-                    <th className="py-2.5 px-2">Cost (₹)</th>
-                    <th className="py-2.5 px-2">GST%</th>
-                    <th className="py-2.5 px-3">Total (₹)</th>
-                    <th className="py-2.5 px-2 text-right"></th>
+                    <th className="py-2.5 px-3 min-w-[170px]">Medicine / Item Name</th>
+                    <th className="py-2.5 px-2">Batch #</th>
+                    <th className="py-2.5 px-2">Expiry</th>
+                    <th className="py-2.5 px-2 text-center">Qty</th>
+                    <th className="py-2.5 px-2 text-center">Free</th>
+                    <th className="py-2.5 px-2 text-right">Cost (₹)</th>
+                    <th className="py-2.5 px-2 text-right">MRP (₹)</th>
+                    <th className="py-2.5 px-2 text-center">GST%</th>
+                    <th className="py-2.5 px-3 text-right">Total (₹)</th>
+                    <th className="py-2.5 px-2 text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {items.map((item, idx) => (
                     <tr key={idx} className="hover:bg-slate-50">
                       <td className="py-2 px-3">
-                        <select
-                          value={item.medicineId}
-                          onChange={e => handleItemChange(idx, 'medicineId', e.target.value)}
-                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg font-medium text-slate-800 max-w-[180px]"
-                        >
-                          {medicines.map(m => (
-                            <option key={m.id} value={m.id}>{m.name}</option>
-                          ))}
-                        </select>
+                        <input
+                          type="text"
+                          list="medicine-datalist-options"
+                          value={item.medicineName}
+                          onChange={e => handleItemChange(idx, 'medicineName', e.target.value)}
+                          placeholder="Medicine name"
+                          className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg font-medium text-slate-800 text-xs focus:outline-none focus:border-teal-600"
+                        />
                       </td>
 
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-2">
                         <input
                           type="text"
                           value={item.batchNumber}
                           onChange={e => handleItemChange(idx, 'batchNumber', e.target.value)}
-                          className="w-24 px-2 py-1 bg-white border border-slate-200 rounded-lg font-mono text-slate-800"
+                          className="w-20 px-1.5 py-1 bg-white border border-slate-200 rounded-lg font-mono text-slate-800 text-xs"
                         />
                       </td>
 
-                      <td className="py-2 px-3">
+                      <td className="py-2 px-2">
                         <input
                           type="date"
                           value={item.expiryDate}
                           onChange={e => handleItemChange(idx, 'expiryDate', e.target.value)}
-                          className="w-28 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800"
+                          className="w-28 px-1 py-1 bg-white border border-slate-200 rounded-lg text-[11px] text-slate-800"
                         />
                       </td>
 
                       <td className="py-2 px-2">
                         <input
                           type="number"
-                          min="1"
+                          step="any"
+                          min="0.1"
                           value={item.quantity}
-                          onChange={e => handleItemChange(idx, 'quantity', parseInt(e.target.value, 10) || 1)}
-                          className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-center"
+                          onChange={e => handleItemChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-center"
                         />
                       </td>
 
                       <td className="py-2 px-2">
                         <input
                           type="number"
+                          step="any"
                           min="0"
                           value={item.freeQuantity || 0}
-                          onChange={e => handleItemChange(idx, 'freeQuantity', parseInt(e.target.value, 10) || 0)}
+                          onChange={e => handleItemChange(idx, 'freeQuantity', parseFloat(e.target.value) || 0)}
                           className="w-12 px-1 py-1 bg-white border border-slate-200 rounded-lg text-slate-600 text-center"
                         />
                       </td>
@@ -584,35 +676,48 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
                       <td className="py-2 px-2">
                         <input
                           type="number"
-                          step="0.1"
+                          step="0.01"
                           value={item.purchasePrice}
                           onChange={e => handleItemChange(idx, 'purchasePrice', parseFloat(e.target.value) || 0)}
-                          className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 text-right"
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 text-right"
+                        />
+                      </td>
+
+                      <td className="py-2 px-2">
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.mrp || ''}
+                          onChange={e => handleItemChange(idx, 'mrp', parseFloat(e.target.value) || 0)}
+                          className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 text-right"
                         />
                       </td>
 
                       <td className="py-2 px-2">
                         <select
                           value={item.gstRate}
-                          onChange={e => handleItemChange(idx, 'gstRate', parseInt(e.target.value, 10) || 12)}
-                          className="w-14 px-1 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 text-center"
+                          onChange={e => handleItemChange(idx, 'gstRate', parseFloat(e.target.value) || 0)}
+                          className="w-16 px-1 py-1 bg-white border border-slate-200 rounded-lg text-slate-800 text-center text-xs"
                         >
+                          <option value="0">0% (Nil)</option>
                           <option value="5">5%</option>
                           <option value="12">12%</option>
                           <option value="18">18%</option>
+                          <option value="28">28%</option>
                         </select>
                       </td>
 
-                      <td className="py-2 px-3 font-bold text-slate-900">
+                      <td className="py-2 px-3 font-bold text-slate-900 text-right whitespace-nowrap">
                         {formatCurrency(item.totalAmount)}
                       </td>
 
-                      <td className="py-2 px-2 text-right">
+                      <td className="py-2 px-2 text-center">
                         {items.length > 1 && (
                           <button
                             type="button"
                             onClick={() => handleRemoveItem(idx)}
-                            className="p-1 text-slate-400 hover:text-rose-600"
+                            className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Remove item"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -684,9 +789,21 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
                 <input
                   type="number"
                   min="0"
+                  step="0.01"
                   value={discountAmount || ''}
                   onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)}
                   className="w-24 px-2 py-0.5 border border-slate-200 rounded text-right font-semibold"
+                />
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Round Off (₹):</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={roundOff || ''}
+                  onChange={e => setRoundOff(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-24 px-2 py-0.5 border border-slate-200 rounded text-right font-semibold text-slate-700"
                 />
               </div>
               <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
