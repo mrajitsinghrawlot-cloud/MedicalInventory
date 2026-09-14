@@ -1,10 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Trash2, FilePlus, Sparkles, Check, AlertCircle, Barcode } from 'lucide-react';
+import { 
+  X, 
+  Plus, 
+  Trash2, 
+  FilePlus, 
+  Sparkles, 
+  Check, 
+  AlertCircle, 
+  Barcode, 
+  Camera, 
+  Upload, 
+  Loader2, 
+  Key, 
+  ExternalLink,
+  HelpCircle
+} from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PurchaseBillItem, Medicine } from '../../types/inventory';
 import { formatCurrency } from '../../utils/formatters';
 import { BarcodeScannerModal } from '../inventory/BarcodeScannerModal';
+import { 
+  getStoredApiKey, 
+  setStoredApiKey, 
+  extractPurchaseBillFromImage, 
+  ExtractedPurchaseBill 
+} from '../../services/geminiService';
 import confetti from 'canvas-confetti';
 
 interface AddPurchaseBillModalProps {
@@ -49,6 +70,115 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   ]);
 
   const [error, setError] = useState('');
+  
+  // AI Bill Scanner State
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isAiExtracting, setIsAiExtracting] = useState(false);
+  const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+  const [isApiKeyPromptOpen, setIsApiKeyPromptOpen] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(() => getStoredApiKey());
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const handleAiScanButtonClick = () => {
+    const key = getStoredApiKey();
+    if (!key) {
+      setIsApiKeyPromptOpen(true);
+    } else {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleSaveKeyAndContinue = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (apiKeyInput.trim()) {
+      setStoredApiKey(apiKeyInput.trim());
+      setIsApiKeyPromptOpen(false);
+      setTimeout(() => {
+        fileInputRef.current?.click();
+      }, 200);
+    }
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input value so same file can be re-selected if desired
+    e.target.value = '';
+
+    setIsAiExtracting(true);
+    setAiError(null);
+    setAiSuccessMessage(null);
+
+    try {
+      const extracted: ExtractedPurchaseBill = await extractPurchaseBillFromImage(file);
+
+      // Auto-match vendor if possible
+      if (extracted.vendorName) {
+        const lowerVendor = extracted.vendorName.toLowerCase();
+        const matchedVendor = vendors.find(v => 
+          lowerVendor.includes(v.name.toLowerCase()) || 
+          v.name.toLowerCase().includes(lowerVendor)
+        );
+        if (matchedVendor) {
+          setVendorId(matchedVendor.id);
+        }
+      }
+
+      if (extracted.billNumber) setBillNumber(extracted.billNumber);
+      if (extracted.invoiceDate) setInvoiceDate(extracted.invoiceDate);
+      if (extracted.dueDate) setDueDate(extracted.dueDate);
+      if (extracted.discountAmount !== undefined) setDiscountAmount(extracted.discountAmount);
+      if (extracted.paymentMethod) setPaymentMethod(extracted.paymentMethod);
+      if (extracted.notes) setNotes(extracted.notes);
+
+      // Map extracted line items
+      if (extracted.items && extracted.items.length > 0) {
+        const mappedItems: PurchaseBillItem[] = extracted.items.map((extItem) => {
+          // Look for matching medicine in inventory
+          const lowerName = extItem.medicineName.toLowerCase();
+          const matchedMed = medicines.find(m => 
+            m.name.toLowerCase().includes(lowerName) || 
+            lowerName.includes(m.name.toLowerCase()) ||
+            m.genericName.toLowerCase().includes(lowerName)
+          );
+
+          const qty = Number(extItem.quantity) || 1;
+          const price = Number(extItem.purchasePrice) || matchedMed?.purchasePrice || 50;
+          const gst = Number(extItem.gstRate) || matchedMed?.gstRate || 12;
+          const baseTotal = qty * price;
+          const taxAmt = (baseTotal * gst) / 100;
+
+          return {
+            medicineId: matchedMed?.id || medicines[0]?.id || '',
+            medicineName: matchedMed?.name || extItem.medicineName,
+            batchNumber: extItem.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
+            expiryDate: extItem.expiryDate || '2027-12-31',
+            quantity: qty,
+            freeQuantity: Number(extItem.freeQuantity) || 0,
+            purchasePrice: price,
+            mrp: Number(extItem.mrp) || matchedMed?.mrp || (price * 1.3),
+            gstRate: gst,
+            taxAmount: taxAmt,
+            totalAmount: baseTotal + taxAmt
+          };
+        });
+
+        setItems(mappedItems);
+        setAiSuccessMessage(`Successfully extracted ${mappedItems.length} items from ${extracted.vendorName || 'Invoice'}!`);
+        try {
+          confetti({ particleCount: 40, spread: 60 });
+        } catch {}
+      } else {
+        setAiSuccessMessage('Invoice metadata extracted. Please add items if table was not clearly visible.');
+      }
+    } catch (err: any) {
+      console.error('AI Extraction failed:', err);
+      setAiError(err?.message || 'Failed to analyze bill image. Please check API key or image clarity.');
+    } finally {
+      setIsAiExtracting(false);
+    }
+  };
 
   const handleItemChange = (index: number, field: keyof PurchaseBillItem, val: any) => {
     setItems(prev => {
@@ -198,21 +328,116 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAiScanButtonClick}
+                  className="px-3.5 py-1.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>AI Scan Bill / Upload</span>
+                </button>
+
+                <button
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
+            {/* Hidden AI File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              onChange={handleFileSelected}
+              className="hidden"
+            />
+
+            {/* AI Extraction Loading Overlay */}
+            {isAiExtracting && (
+              <div className="absolute inset-0 z-40 bg-white/90 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-center space-y-4">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700 shadow-lg">
+                    <Sparkles className="w-8 h-8 animate-pulse" />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-xs">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                </div>
+                <div className="space-y-1 max-w-sm">
+                  <h3 className="font-bold text-slate-900 text-sm">Google AI Extracting Purchase Bill...</h3>
+                  <p className="text-xs text-slate-500">
+                    Analyzing supplier name, invoice #, line items, batches, expiries, quantities, and GST rates.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 border border-teal-200 text-teal-800 rounded-full text-[10px] font-bold">
+                  <span>Powered by Gemini 2.5 Flash Free Tier</span>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5 text-xs">
+              {/* AI Success Banner */}
+              {aiSuccessMessage && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold">{aiSuccessMessage}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setAiSuccessMessage(null)}
+                    className="text-emerald-700 hover:text-emerald-900 font-bold text-xs"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              {/* AI Error Banner */}
+              {aiError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span className="font-semibold">{aiError}</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setAiError(null)}
+                    className="text-rose-700 hover:text-rose-900 font-bold text-xs"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
               {error && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
+
+              {/* Quick AI Tip Callout */}
+              <div className="p-3 bg-gradient-to-r from-teal-50/70 to-emerald-50/70 border border-teal-200/60 rounded-xl flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 text-teal-900">
+                  <Sparkles className="w-4 h-4 text-teal-700 shrink-0" />
+                  <span className="font-medium">
+                    Tip: Snap a photo of physical wholesale bills or upload PDF invoices to autofill the entire form in seconds!
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAiScanButtonClick}
+                  className="px-2.5 py-1 bg-white border border-teal-300 hover:bg-teal-50 text-teal-800 rounded-lg font-bold text-[11px] shrink-0 shadow-2xs"
+                >
+                  Scan Photo
+                </button>
+              </div>
 
           {/* Supplier and Bill Meta */}
           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -500,8 +725,107 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
         subtitle="Point camera at arriving stock box to auto-insert a purchase invoice line"
         actionButtonLabel="Insert Inward Line"
       />
+
+      {/* AI Studio API Key Prompt Modal */}
+      <AnimatePresence>
+        {isApiKeyPromptOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+              onClick={() => setIsApiKeyPromptOpen(false)}
+            />
+
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 z-10 space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-gradient-to-br from-teal-600 to-emerald-600 text-white rounded-xl shadow-xs">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900 text-sm">Setup Free AI Bill Scanner</h3>
+                    <p className="text-[11px] text-slate-500">Google AI Studio Gemini API</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsApiKeyPromptOpen(false)}
+                  className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-slate-600">
+                <p className="leading-relaxed">
+                  To automatically read invoices from photos, MediStock connects directly to your free Google AI Studio key.
+                </p>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-emerald-900 text-[11px]">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>100% Free Tier Limits:</span>
+                  </div>
+                  <p>• 1,500 bill scans / day (50–100x what any pharmacy needs)</p>
+                  <p>• 15 scans / minute • 1,000,000 tokens/min • ₹0.00 cost</p>
+                  <p>• Key remains private in your local browser only</p>
+                </div>
+
+                <form onSubmit={handleSaveKeyAndContinue} className="space-y-3 pt-1">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="font-bold text-slate-800">Paste Gemini API Key:</label>
+                      <a
+                        href="https://aistudio.google.com/app/apikey"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-teal-700 hover:text-teal-800 font-bold inline-flex items-center gap-1 text-[11px] hover:underline"
+                      >
+                        <span>Get Free Key</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={e => setApiKeyInput(e.target.value)}
+                      placeholder="AIzaSy..."
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 text-xs focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsApiKeyPromptOpen(false)}
+                      className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!apiKeyInput.trim()}
+                      className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5"
+                    >
+                      <span>Save & Choose Bill Photo</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
       )}
     </AnimatePresence>
   );
 };
+
