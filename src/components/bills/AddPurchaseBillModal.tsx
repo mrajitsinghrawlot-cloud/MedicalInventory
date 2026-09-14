@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
@@ -39,37 +39,37 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
 }) => {
   const { medicines, addMedicine, vendors, addVendor, addPurchaseBill } = useInventory();
 
+  const createBlankItem = (idSuffix: number = 1): PurchaseBillItem => ({
+    medicineId: `new-med-${idSuffix}-${Date.now()}`,
+    medicineName: '',
+    batchNumber: '',
+    expiryDate: '',
+    quantity: 1,
+    freeQuantity: 0,
+    purchasePrice: 0,
+    mrp: 0,
+    gstRate: 12,
+    taxAmount: 0,
+    totalAmount: 0
+  });
+
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [billNumber, setBillNumber] = useState(`PB-2026-${Math.floor(100 + Math.random() * 900)}`);
+  const [billNumber, setBillNumber] = useState('');
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 30);
     return d.toISOString().split('T')[0];
   });
-  const [vendorId, setVendorId] = useState(vendors[0]?.id || '');
-  const [vendorName, setVendorName] = useState(vendors[0]?.name || 'SHRI LAXMI TRADING COMPANY');
+  const [vendorId, setVendorId] = useState('');
+  const [vendorName, setVendorName] = useState('');
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'UNPAID'>('PAID');
   const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note'>('Cash');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [roundOff, setRoundOff] = useState<number>(0);
-  const [notes, setNotes] = useState('Stock verified & batch cold-chain inspected upon receipt');
+  const [notes, setNotes] = useState('');
 
-  const [items, setItems] = useState<PurchaseBillItem[]>([
-    {
-      medicineId: medicines[0]?.id || 'new-med-1',
-      medicineName: medicines[0]?.name || 'MAXO COMBI(80)',
-      batchNumber: `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-      expiryDate: '2028-12-31',
-      quantity: 10,
-      freeQuantity: 0,
-      purchasePrice: 50,
-      mrp: 75,
-      gstRate: 12,
-      taxAmount: 60,
-      totalAmount: 560
-    }
-  ]);
+  const [items, setItems] = useState<PurchaseBillItem[]>([createBlankItem(1)]);
 
   const [error, setError] = useState('');
   
@@ -80,6 +80,21 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   const [isApiKeyPromptOpen, setIsApiKeyPromptOpen] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(() => getStoredApiKey());
   const [aiError, setAiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setBillNumber('');
+      setVendorId('');
+      setVendorName('');
+      setDiscountAmount(0);
+      setRoundOff(0);
+      setNotes('');
+      setItems([createBlankItem(1)]);
+      setError('');
+      setAiError(null);
+      setAiSuccessMessage(null);
+    }
+  }, [isOpen]);
 
   const handleAiScanButtonClick = () => {
     const key = getStoredApiKey();
@@ -242,20 +257,7 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   };
 
   const handleAddItem = () => {
-    const newItem: PurchaseBillItem = {
-      medicineId: `new-med-${Date.now()}`,
-      medicineName: '',
-      batchNumber: `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
-      expiryDate: '2028-12-31',
-      quantity: 10,
-      freeQuantity: 0,
-      purchasePrice: 50,
-      mrp: 80,
-      gstRate: 12,
-      taxAmount: 60,
-      totalAmount: 560
-    };
-    setItems(prev => [...prev, newItem]);
+    setItems(prev => [...prev, createBlankItem(prev.length + 1)]);
   };
 
   const handleScannedInwardItem = (scannedMed: Medicine) => {
