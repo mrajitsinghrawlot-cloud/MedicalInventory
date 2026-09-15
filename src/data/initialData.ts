@@ -590,6 +590,109 @@ export const initialPurchaseBills: PurchaseBill[] = [
         totalAmount: 15104
       }
     ]
+  },
+  {
+    id: 'bill-004',
+    billNumber: 'PB-2026-102',
+    invoiceDate: '2026-09-08',
+    dueDate: '2026-10-08',
+    vendorId: 'ven-002',
+    vendorName: 'Apollo Lifeline Wholesale',
+    subtotal: 19820,
+    taxAmount: 2378.40,
+    discountAmount: 400,
+    grandTotal: 21798.40,
+    paidAmount: 21798.40,
+    paymentStatus: 'PAID',
+    paymentMethod: 'Bank Transfer',
+    receivedDate: '2026-09-09',
+    notes: 'Direct bulk replenishment order',
+    items: [
+      {
+        medicineId: 'med-001',
+        medicineName: 'Augmentin 625 Duo Tablet',
+        batchNumber: 'AUG-8890',
+        expiryDate: '2027-02-15',
+        quantity: 80,
+        freeQuantity: 8,
+        purchasePrice: 141.00, // Cheaper than MedPlus (145.50)
+        mrp: 201.70,
+        gstRate: 12,
+        taxAmount: 1353.60,
+        totalAmount: 12633.60
+      },
+      {
+        medicineId: 'med-003',
+        medicineName: 'Pantocid 40 Tablet',
+        batchNumber: 'PNT-3012',
+        expiryDate: '2027-08-20',
+        quantity: 70,
+        freeQuantity: 7,
+        purchasePrice: 102.50,
+        mrp: 148.00,
+        gstRate: 12,
+        taxAmount: 861,
+        totalAmount: 8036
+      }
+    ]
+  },
+  {
+    id: 'bill-005',
+    billNumber: 'PB-2026-105',
+    invoiceDate: '2026-09-14',
+    dueDate: '2026-10-29',
+    vendorId: 'ven-003',
+    vendorName: 'Cipla Direct Distribution',
+    subtotal: 15400,
+    taxAmount: 1848,
+    discountAmount: 250,
+    grandTotal: 16998,
+    paidAmount: 16998,
+    paymentStatus: 'PAID',
+    paymentMethod: 'UPI',
+    receivedDate: '2026-09-14',
+    notes: 'Special institutional distributor pricing',
+    items: [
+      {
+        medicineId: 'med-002',
+        medicineName: 'Dolo 650 Tablet',
+        batchNumber: 'DL-9912',
+        expiryDate: '2028-03-31',
+        quantity: 300,
+        freeQuantity: 30,
+        purchasePrice: 21.90, // Cheapest rate for Dolo 650!
+        mrp: 33.60,
+        gstRate: 12,
+        taxAmount: 788.40,
+        totalAmount: 7358.40
+      },
+      {
+        medicineId: 'med-004',
+        medicineName: 'Azithral 500 Tablet',
+        batchNumber: 'AZT-4091',
+        expiryDate: '2027-05-18',
+        quantity: 80,
+        freeQuantity: 8,
+        purchasePrice: 84.00,
+        mrp: 119.50,
+        gstRate: 12,
+        taxAmount: 806.40,
+        totalAmount: 7526.40
+      },
+      {
+        medicineId: 'med-007',
+        medicineName: 'Asthalin 100mcg Inhaler',
+        batchNumber: 'AST-2211',
+        expiryDate: '2028-04-10',
+        quantity: 20,
+        freeQuantity: 2,
+        purchasePrice: 104.50,
+        mrp: 158.40,
+        gstRate: 12,
+        taxAmount: 250.80,
+        totalAmount: 2340.80
+      }
+    ]
   }
 ];
 

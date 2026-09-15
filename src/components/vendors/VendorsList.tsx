@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users2, Plus, Phone, Mail, MapPin, Star, ShieldCheck, FileSpreadsheet, Search } from 'lucide-react';
+import { Users2, Plus, Phone, Mail, MapPin, Star, ShieldCheck, FileSpreadsheet, Search, Scale } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { Vendor } from '../../types/inventory';
 import { formatCurrency } from '../../utils/formatters';
@@ -29,13 +29,22 @@ export const VendorsList: React.FC<VendorsListProps> = ({ onOpenAddVendor, onOpe
           <p className="text-xs text-slate-500">Manage drug suppliers, license numbers, ratings, and credit terms</p>
         </div>
 
-        <button
-          onClick={onOpenAddVendor}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add New Vendor</span>
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => navigate('price-comparison')}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold transition-all"
+          >
+            <Scale className="w-4 h-4 text-emerald-600" />
+            <span>Compare Supplier Rates</span>
+          </button>
+          <button
+            onClick={onOpenAddVendor}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Vendor</span>
+          </button>
+        </div>
       </div>
 
       {/* Search Toolbar */}

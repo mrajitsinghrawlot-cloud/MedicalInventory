@@ -181,6 +181,7 @@ export type PageId =
   | 'medicine-details'
   | 'purchase-bills'
   | 'add-purchase-bill'
+  | 'price-comparison'
   | 'vendors'
   | 'expiry'
   | 'low-stock'

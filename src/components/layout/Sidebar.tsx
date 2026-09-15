@@ -14,7 +14,8 @@ import {
   ChevronLeft, 
   ChevronRight,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Scale
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PageId } from '../../types/inventory';
@@ -65,6 +66,13 @@ export const Sidebar: React.FC = () => {
       id: 'purchase-bills', 
       label: 'Purchase Bills', 
       icon: FileSpreadsheet 
+    },
+    { 
+      id: 'price-comparison', 
+      label: 'Price Compare', 
+      icon: Scale,
+      badge: 'PRO',
+      badgeColor: 'bg-emerald-100 text-emerald-800 font-bold'
     },
     { 
       id: 'vendors', 

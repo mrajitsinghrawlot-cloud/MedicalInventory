@@ -20,7 +20,8 @@ import {
   FilePlus,
   Barcode,
   Download,
-  Smartphone
+  Smartphone,
+  Scale
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PageId } from '../../types/inventory';
@@ -139,6 +140,14 @@ export const AndroidNavDrawer: React.FC<AndroidNavDrawerProps> = ({
           label: 'Purchase Inward Bills',
           desc: 'Vendor invoices & inward stock',
           icon: FileSpreadsheet
+        },
+        {
+          id: 'price-comparison',
+          label: 'Supplier Price Compare',
+          desc: 'Best distributor rates & margins',
+          icon: Scale,
+          badge: 'BEST',
+          badgeColor: 'bg-emerald-600 text-white font-extrabold'
         },
         {
           id: 'vendors',

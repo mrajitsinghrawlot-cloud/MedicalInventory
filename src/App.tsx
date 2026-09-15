@@ -34,6 +34,7 @@ const PurchaseBillsList = lazyWithRetry(() => import('./components/bills/Purchas
 const VendorsList = lazyWithRetry(() => import('./components/vendors/VendorsList').then(m => ({ default: m.VendorsList })));
 const StockMovementsList = lazyWithRetry(() => import('./components/audit/StockMovementsList').then(m => ({ default: m.StockMovementsList })));
 const ReportsView = lazyWithRetry(() => import('./components/reports/ReportsView').then(m => ({ default: m.ReportsView })));
+const SupplierPriceComparisonView = lazyWithRetry(() => import('./components/procurement/SupplierPriceComparisonView').then(m => ({ default: m.SupplierPriceComparisonView })));
 const SettingsView = lazyWithRetry(() => import('./components/settings/SettingsView').then(m => ({ default: m.SettingsView })));
 
 // Fast Lazy-loaded Modals
@@ -163,6 +164,14 @@ const MainLayout: React.FC = () => {
       case 'reports':
         return <ReportsView />;
 
+      case 'price-comparison':
+        return (
+          <SupplierPriceComparisonView
+            onOpenAddBill={() => setIsAddBillOpen(true)}
+            onOpenMedicineDetail={(med) => setSelectedMedicine(med)}
+          />
+        );
+
       case 'settings':
         return <SettingsView />;
 
@@ -251,6 +260,7 @@ const MainLayout: React.FC = () => {
           <MedicineDetailModal
             onClose={() => setSelectedMedicine(null)}
             onOpenAdjustment={() => handleOpenAdjustment(selectedMedicine)}
+            onOpenAddBill={() => setIsAddBillOpen(true)}
           />
         )}
 
