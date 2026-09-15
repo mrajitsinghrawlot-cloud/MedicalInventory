@@ -305,62 +305,23 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       return;
     }
 
-    // Auto-resolve or register vendor
+    // Auto-resolve vendor ID
     let targetVendorId = vendorId;
     const matchedVendor = vendors.find(v => 
       v.id === vendorId || 
       v.name.toLowerCase() === vendorName.trim().toLowerCase()
     );
-
     if (matchedVendor) {
       targetVendorId = matchedVendor.id;
     } else if (vendorName.trim()) {
-      const newVenId = `ven-${Date.now()}`;
-      addVendor({
-        name: vendorName.trim(),
-        contactPerson: 'Distributor Representative',
-        phone: '+91 94144 78218',
-        email: 'billing@distributor.com',
-        address: 'Medical Market, MGH Road',
-        city: 'Jodhpur',
-        gstin: '08AABPI5309K1ZR',
-        dlNumber: 'DL-20B/21B-48190',
-        paymentTermsDays: 30,
-        rating: 5.0,
-        status: 'Active'
-      });
-      targetVendorId = newVenId;
+      targetVendorId = `ven-${Date.now()}`;
     }
 
-    // Auto-register new medicines into store inventory if they don't exist yet
+    // Prepare finalized items
     const finalizedItems: PurchaseBillItem[] = items.map(item => {
       const trimmedName = item.medicineName.trim() || 'Medical Product';
       const matchedMed = medicines.find(m => m.name.toLowerCase() === trimmedName.toLowerCase());
-      let medId = matchedMed?.id || item.medicineId;
-
-      if (!matchedMed) {
-        medId = `med-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        addMedicine({
-          name: trimmedName,
-          genericName: trimmedName,
-          category: 'Medical Supplies',
-          form: 'Tablet',
-          strength: 'Standard',
-          manufacturer: vendorName.trim() || 'Pharmaceutical Distributor',
-          batchNumber: item.batchNumber,
-          barcode: String(Math.floor(100000000000 + Math.random() * 900000000000)),
-          expiryDate: item.expiryDate,
-          purchasePrice: item.purchasePrice,
-          mrp: item.mrp || item.purchasePrice * 1.35,
-          unitsPerPack: 10,
-          stockQuantity: 0,
-          minStockThreshold: 10,
-          rackLocation: 'Inward Shelf',
-          scheduleType: 'OTC',
-          requiresPrescription: false,
-          gstRate: item.gstRate
-        });
-      }
+      const medId = matchedMed?.id || item.medicineId || `med-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
       return {
         ...item,

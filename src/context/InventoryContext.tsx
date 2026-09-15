@@ -342,7 +342,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return newSale;
   };
 
-  const addPurchaseBill = (billData: Omit<PurchaseBill, 'id'> | Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'>) => {
+  const addPurchaseBill = (billData: Omit<PurchaseBill, 'id'> | (Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'> & { roundOff?: number; grandTotal?: number; subtotal?: number; taxAmount?: number })) => {
     const subtotal = 'subtotal' in billData && typeof billData.subtotal === 'number'
       ? billData.subtotal
       : Math.round(billData.items.reduce((acc, item) => acc + (item.quantity * item.purchasePrice), 0) * 100) / 100;
@@ -367,50 +367,147 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
     setPurchaseBills(prev => [newBill, ...prev]);
 
-    setVendors(prev => prev.map(v => {
-      if (v.id === billData.vendorId) {
-        const remainingUnpaid = grandTotal - (newBill.paidAmount || 0);
-        return {
-          ...v,
-          balanceDue: v.balanceDue + remainingUnpaid,
-          totalPurchases: v.totalPurchases + grandTotal
-        };
-      }
-      return v;
-    }));
+    // Update or Auto-register Vendor
+    setVendors(prev => {
+      const targetName = (billData.vendorName || '').trim();
+      const existingVendor = prev.find(v => 
+        (billData.vendorId && v.id === billData.vendorId) || 
+        (targetName && v.name.toLowerCase() === targetName.toLowerCase())
+      );
+      const remainingUnpaid = grandTotal - (newBill.paidAmount || 0);
 
-    billData.items.forEach(item => {
-      const existing = medicines.find(m => m.id === item.medicineId);
-      const addedQty = item.quantity + (item.freeQuantity || 0);
-
-      if (existing) {
-        const prevStock = existing.stockQuantity;
-        const newStock = prevStock + addedQty;
-
-        updateMedicine(existing.id, {
-          stockQuantity: newStock,
-          batchNumber: item.batchNumber || existing.batchNumber,
-          expiryDate: item.expiryDate || existing.expiryDate,
-          purchasePrice: item.purchasePrice || existing.purchasePrice,
-          mrp: item.mrp || existing.mrp
+      if (existingVendor) {
+        return prev.map(v => {
+          if (v.id === existingVendor.id) {
+            return {
+              ...v,
+              balanceDue: v.balanceDue + remainingUnpaid,
+              totalPurchases: v.totalPurchases + grandTotal
+            };
+          }
+          return v;
         });
-
-        const movement: StockMovement = {
-          id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          medicineId: existing.id,
-          medicineName: existing.name,
-          type: 'PURCHASE',
-          quantity: addedQty,
-          date: new Date().toISOString(),
-          reason: `Purchase Bill #${billData.billNumber}`,
-          referenceId: billId,
-          performedBy: 'Receiving Pharmacist',
-          previousStock: prevStock,
-          newStock
+      } else if (targetName) {
+        const newVendor: Vendor = {
+          id: billData.vendorId || `ven-${Date.now()}`,
+          name: targetName,
+          contactPerson: 'Distributor Representative',
+          phone: '+91 94144 78218',
+          email: 'billing@distributor.com',
+          address: 'Medical Market, MGH Road',
+          city: 'Jodhpur',
+          gstin: '08AABPI5309K1ZR',
+          dlNumber: 'DL-20B/21B-48190',
+          paymentTermsDays: 30,
+          rating: 5.0,
+          balanceDue: remainingUnpaid,
+          totalPurchases: grandTotal,
+          status: 'Active'
         };
-        setStockMovements(prev => [movement, ...prev]);
+        return [newVendor, ...prev];
       }
+      return prev;
     });
+
+    // Atomically Update Medicine Stock Quantities & Record Audit Movement Logs
+    const newMovements: StockMovement[] = [];
+
+    setMedicines(prevMedicines => {
+      const updatedMedicines = [...prevMedicines];
+
+      billData.items.forEach((item, idx) => {
+        const addedQty = Number(item.quantity || 0) + Number(item.freeQuantity || 0);
+        if (addedQty <= 0) return;
+
+        const trimmedName = (item.medicineName || '').trim();
+        const existingIndex = updatedMedicines.findIndex(m => 
+          (item.medicineId && m.id === item.medicineId) || 
+          (trimmedName && m.name.toLowerCase() === trimmedName.toLowerCase())
+        );
+
+        if (existingIndex !== -1) {
+          // Existing medicine: Increase stockQuantity
+          const existing = updatedMedicines[existingIndex];
+          const prevStock = Number(existing.stockQuantity) || 0;
+          const newStock = prevStock + addedQty;
+          const status = computeMedicineStatus(newStock, existing.minStockThreshold || 10, item.expiryDate || existing.expiryDate);
+
+          updatedMedicines[existingIndex] = {
+            ...existing,
+            stockQuantity: newStock,
+            status,
+            batchNumber: item.batchNumber || existing.batchNumber,
+            expiryDate: item.expiryDate || existing.expiryDate,
+            purchasePrice: item.purchasePrice || existing.purchasePrice,
+            mrp: item.mrp || existing.mrp,
+            gstRate: item.gstRate ?? existing.gstRate
+          };
+
+          newMovements.push({
+            id: `mov-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            medicineId: existing.id,
+            medicineName: existing.name,
+            type: 'PURCHASE',
+            quantity: addedQty,
+            date: new Date().toISOString(),
+            reason: `Purchase Bill #${billData.billNumber} (${billData.vendorName || 'Supplier'})`,
+            referenceId: billId,
+            performedBy: 'Receiving Pharmacist',
+            previousStock: prevStock,
+            newStock
+          });
+        } else {
+          // New medicine: Create new catalog item with stockQuantity = addedQty
+          const medId = item.medicineId || `med-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+          const status = computeMedicineStatus(addedQty, 10, item.expiryDate || '2028-12-31');
+
+          const newMed: Medicine = {
+            id: medId,
+            name: trimmedName || 'Medical Product',
+            genericName: trimmedName || 'Medical Product',
+            category: 'Medical Supplies',
+            form: 'Tablet',
+            strength: 'Standard',
+            manufacturer: billData.vendorName || 'Pharmaceutical Distributor',
+            batchNumber: item.batchNumber || `BAT-${Math.floor(1000 + Math.random() * 9000)}`,
+            barcode: String(Math.floor(100000000000 + Math.random() * 900000000000)),
+            expiryDate: item.expiryDate || '2028-12-31',
+            purchasePrice: item.purchasePrice || 50,
+            mrp: item.mrp || Math.round((item.purchasePrice || 50) * 1.35 * 100) / 100,
+            unitsPerPack: 10,
+            stockQuantity: addedQty,
+            minStockThreshold: 10,
+            rackLocation: 'Inward Shelf',
+            scheduleType: 'OTC',
+            requiresPrescription: false,
+            status,
+            gstRate: item.gstRate ?? 12
+          };
+
+          updatedMedicines.unshift(newMed);
+
+          newMovements.push({
+            id: `mov-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            medicineId: medId,
+            medicineName: newMed.name,
+            type: 'PURCHASE',
+            quantity: addedQty,
+            date: new Date().toISOString(),
+            reason: `Purchase Bill #${billData.billNumber} (New SKU registered)`,
+            referenceId: billId,
+            performedBy: 'Receiving Pharmacist',
+            previousStock: 0,
+            newStock: addedQty
+          });
+        }
+      });
+
+      return updatedMedicines;
+    });
+
+    if (newMovements.length > 0) {
+      setStockMovements(prev => [...newMovements, ...prev]);
+    }
   };
 
   const updateBillPayment = (billId: string, paidAmount: number, status: 'PAID' | 'PARTIAL' | 'UNPAID') => {
