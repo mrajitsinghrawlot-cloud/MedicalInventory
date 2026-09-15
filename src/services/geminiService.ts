@@ -265,17 +265,78 @@ export async function testApiKey(apiKey: string): Promise<{ success: boolean; me
   };
 }
 
-function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
+function optimizeImageForOcr(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const [header, base64] = result.split(',');
-      const mimeType = header.match(/:(.*?);/)?.[1] || file.type || 'image/jpeg';
-      resolve({ base64, mimeType });
+    // If it's a PDF or already very small (< 400KB), use standard FileReader
+    if (file.type === 'application/pdf' || file.size < 400 * 1024) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const [header, base64] = result.split(',');
+        const mimeType = header.match(/:(.*?);/)?.[1] || file.type || 'image/jpeg';
+        resolve({ base64, mimeType });
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // For smartphone camera photos (often 5MB - 20MB), optimize via high-DPI canvas
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDimension = 2048; // Max 2048px preserves crystal-clear font text for OCR
+      let { width, height } = img;
+
+      if (width > maxDimension || height > maxDimension) {
+        if (width > height) {
+          height = Math.round((height * maxDimension) / width);
+          width = maxDimension;
+        } else {
+          width = Math.round((width * maxDimension) / height);
+          height = maxDimension;
+        }
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const [header, base64] = result.split(',');
+          resolve({ base64, mimeType: file.type || 'image/jpeg' });
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const [header, base64] = dataUrl.split(',');
+      resolve({ base64, mimeType: 'image/jpeg' });
     };
-    reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(file);
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        const [header, base64] = result.split(',');
+        resolve({ base64, mimeType: file.type || 'image/jpeg' });
+      };
+      reader.readAsDataURL(file);
+    };
+
+    img.src = url;
   });
 }
 
@@ -289,7 +350,7 @@ export async function extractPurchaseBillFromImage(
     throw new Error('Google AI Studio API key not found. Please provide or configure your free API key in Settings.');
   }
 
-  const { base64, mimeType } = await fileToBase64(file);
+  const { base64, mimeType } = await optimizeImageForOcr(file);
 
   const systemInstruction = `You are a precision Indian Pharmaceutical Wholesale Billing and GST Invoice OCR Assistant.
 You specialize in reading Indian pharmaceutical distributor invoices (Marg ERP, Busy, Tally, Dot-matrix, and Laser printed bills like Shri Laxmi Trading Company, Suncity Enterprises, Jyoti Enterprises).

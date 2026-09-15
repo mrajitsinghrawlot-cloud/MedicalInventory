@@ -1,4 +1,4 @@
-const CACHE_NAME = 'medistock-pwa-v2.2';
+const CACHE_NAME = 'medistock-pwa-v2.6';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -7,10 +7,11 @@ const ASSETS_TO_CACHE = [
 ];
 
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
@@ -27,8 +28,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   
-  // For navigation (HTML page load), use Network-First so users always get the latest asset bundle
-  if (event.request.mode === 'navigate') {
+  const url = new URL(event.request.url);
+
+  // Network-First for HTML navigation and JS/CSS application code
+  if (
+    event.request.mode === 'navigate' || 
+    url.pathname.endsWith('.js') || 
+    url.pathname.endsWith('.css') || 
+    url.pathname.startsWith('/assets/')
+  ) {
     event.respondWith(
       fetch(event.request)
         .then((networkResponse) => {
@@ -39,26 +47,27 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(() => {
-          return caches.match('/index.html') || caches.match('/');
+          return caches.match(event.request).then((cached) => {
+            if (cached) return cached;
+            if (event.request.mode === 'navigate') {
+              return caches.match('/index.html') || caches.match('/');
+            }
+            return new Response('Network error', { status: 408 });
+          });
         })
     );
     return;
   }
 
-  // For static assets, use Cache-First with background revalidation
+  // Cache-First with network fallback for images, fonts, icons
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+      if (cachedResponse) return cachedResponse;
       return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200) {
-          return networkResponse;
+        if (networkResponse && networkResponse.status === 200) {
+          const copy = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
         return networkResponse;
       });
     })
