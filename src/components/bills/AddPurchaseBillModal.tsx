@@ -37,7 +37,7 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const { medicines, addMedicine, vendors, addVendor, addPurchaseBill } = useInventory();
+  const { medicines, addMedicine, vendors, addVendor, purchaseBills, addPurchaseBill } = useInventory();
 
   const createBlankItem = (idSuffix: number = 1): PurchaseBillItem => ({
     medicineId: `new-med-${idSuffix}-${Date.now()}`,
@@ -63,6 +63,17 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
   });
   const [vendorId, setVendorId] = useState('');
   const [vendorName, setVendorName] = useState('');
+
+  // Check for duplicate purchase invoice number
+  const duplicateBill = billNumber.trim() ? purchaseBills.find(b => {
+    const isSameBillNum = b.billNumber.trim().toLowerCase() === billNumber.trim().toLowerCase();
+    if (!isSameBillNum) return false;
+    // If vendor is specified, match on vendor; otherwise flag match on billNumber
+    if (vendorName.trim()) {
+      return b.vendorName.trim().toLowerCase() === vendorName.trim().toLowerCase() || b.vendorId === vendorId;
+    }
+    return true;
+  }) : null;
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'UNPAID'>('PAID');
   const [paymentMethod, setPaymentMethod] = useState<'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note'>('Cash');
   const [discountAmount, setDiscountAmount] = useState<number>(0);
@@ -300,6 +311,11 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
       return;
     }
 
+    if (duplicateBill) {
+      setError(`Duplicate Invoice Alert: Bill #${billNumber.trim()} from "${duplicateBill.vendorName}" has already been saved on ${duplicateBill.invoiceDate}. Duplicate purchase invoices cannot be added.`);
+      return;
+    }
+
     if (items.length === 0) {
       setError('Please add at least 1 medicine item');
       return;
@@ -526,13 +542,36 @@ export const AddPurchaseBillModal: React.FC<AddPurchaseBillModalProps> = ({
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Invoice / Bill #</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-700">Invoice / Bill #</label>
+                {duplicateBill && (
+                  <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                    Duplicate
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={billNumber}
                 onChange={e => setBillNumber(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:outline-none focus:border-teal-600"
+                placeholder="e.g. INV-2024-001"
+                className={`w-full px-3 py-2 rounded-xl font-mono text-slate-800 focus:outline-none transition-colors ${
+                  duplicateBill 
+                    ? 'bg-rose-50/60 border border-rose-400 focus:border-rose-500' 
+                    : 'bg-slate-50 border border-slate-200 focus:border-teal-600'
+                }`}
               />
+              {duplicateBill ? (
+                <p className="text-[10px] text-rose-600 font-semibold mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  Already saved for {duplicateBill.vendorName} ({duplicateBill.invoiceDate})
+                </p>
+              ) : billNumber.trim() ? (
+                <p className="text-[10px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
+                  <Check className="w-3 h-3 shrink-0" />
+                  Available invoice number
+                </p>
+              ) : null}
             </div>
 
             <div>
