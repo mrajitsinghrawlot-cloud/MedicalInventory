@@ -103,33 +103,33 @@ interface InventoryContextType {
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  MEDICINES: 'medistock_medicines_v2',
-  VENDORS: 'medistock_vendors_v2',
-  BILLS: 'medistock_bills_v2',
-  DELETED_BILLS: 'medistock_deleted_bills_v2',
-  SUPER_ADMIN_PIN: 'medistock_super_admin_pin_v2',
-  SALES: 'medistock_sales_v2',
-  CUSTOMERS: 'medistock_customers_v2',
-  CUSTOMER_PAYMENTS: 'medistock_customer_payments_v2',
-  MOVEMENTS: 'medistock_movements_v2',
-  NOTIFICATIONS: 'medistock_notifications_v2'
+  MEDICINES: 'medistock_medicines_v3',
+  VENDORS: 'medistock_vendors_v3',
+  BILLS: 'medistock_bills_v3',
+  DELETED_BILLS: 'medistock_deleted_bills_v3',
+  SUPER_ADMIN_PIN: 'medistock_super_admin_pin_v3',
+  SALES: 'medistock_sales_v3',
+  CUSTOMERS: 'medistock_customers_v3',
+  CUSTOMER_PAYMENTS: 'medistock_customer_payments_v3',
+  MOVEMENTS: 'medistock_movements_v3',
+  NOTIFICATIONS: 'medistock_notifications_v3'
 };
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Load initial or stored data
+  // Load initial or stored data (defaulting to clean 0 records for fresh users)
   const [medicines, setMedicines] = useState<Medicine[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MEDICINES);
-    return saved ? JSON.parse(saved) : initialMedicines;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [vendors, setVendors] = useState<Vendor[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.VENDORS);
-    return saved ? JSON.parse(saved) : initialVendors;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [purchaseBills, setPurchaseBills] = useState<PurchaseBill[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BILLS);
-    return saved ? JSON.parse(saved) : initialPurchaseBills;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [deletedPurchaseBills, setDeletedPurchaseBills] = useState<PurchaseBill[]>(() => {
@@ -144,27 +144,27 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const [salesBills, setSalesBills] = useState<SalesBill[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.SALES);
-    return saved ? JSON.parse(saved) : initialSalesBills;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [customers, setCustomers] = useState<CustomerAccount[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
-    return saved ? JSON.parse(saved) : initialCustomers;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [customerPayments, setCustomerPayments] = useState<CustomerPaymentRecord[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMER_PAYMENTS);
-    return saved ? JSON.parse(saved) : initialCustomerPayments;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-    return saved ? JSON.parse(saved) : initialStockMovements;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [notifications, setNotifications] = useState<AppNotification[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
-    return saved ? JSON.parse(saved) : initialNotifications;
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
@@ -951,9 +951,13 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setMedicines(initialMedicines);
     setVendors(initialVendors);
     setPurchaseBills(initialPurchaseBills);
+    setDeletedPurchaseBills([]);
     setSalesBills(initialSalesBills);
+    setCustomers(initialCustomers);
+    setCustomerPayments(initialCustomerPayments);
     setStockMovements(initialStockMovements);
     setNotifications(initialNotifications);
+    setSuperAdminPin('7821');
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
   };
 
@@ -961,13 +965,17 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setMedicines([]);
     setVendors([]);
     setPurchaseBills([]);
+    setDeletedPurchaseBills([]);
     setSalesBills([]);
+    setCustomers([]);
+    setCustomerPayments([]);
     setStockMovements([]);
     setNotifications([]);
     setSelectedMedicine(null);
     setSelectedBill(null);
     setSelectedSalesBill(null);
     setSelectedVendor(null);
+    setSelectedCustomer(null);
     Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
   };
 
