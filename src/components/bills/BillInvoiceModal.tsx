@@ -12,8 +12,14 @@ interface BillInvoiceModalProps {
 }
 
 export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClose }) => {
-  const { updateBillPayment } = useInventory();
+  const { updateBillPayment, pharmacyProfile } = useInventory();
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+
+  const currentPharmacyName = pharmacyProfile?.pharmacyName || 'Santoshi Maa Medical';
+  const currentAddress = pharmacyProfile?.address || 'Basni 2nd Phase Near Dr. Adarsh School';
+  const currentPhone = pharmacyProfile?.phone || '+91 98290 12345';
+  const currentDlNumber = pharmacyProfile?.dlNumber || 'DL-20B/21B-48190';
+  const currentGstin = pharmacyProfile?.gstin || '08AAAAA0000A1Z5';
 
   const balance = bill ? bill.grandTotal - (bill.paidAmount || 0) : 0;
 
@@ -42,7 +48,7 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
               onClick={onClose}
             />
 
-            {/* Printable Invoice Card */}
+            {/* Modal Container */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.94, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -87,11 +93,11 @@ export const BillInvoiceModal: React.FC<BillInvoiceModalProps> = ({ bill, onClos
                       <div className="w-7 h-7 rounded-lg bg-teal-700 flex items-center justify-center text-white font-bold text-sm">
                         +
                       </div>
-                      <span className="text-xl font-extrabold text-slate-900 tracking-tight">MediStock Hospital Pharmacy</span>
+                      <span className="text-xl font-extrabold text-slate-900 tracking-tight">{currentPharmacyName}</span>
                     </div>
-                    <p className="text-slate-500">42 Medical Center Boulevard, Healthcare District</p>
-                    <p className="text-slate-500">GSTIN: 27AAAAA0000A1Z5 • Drug Lic: DL-20B/21B-48190</p>
-                    <p className="text-slate-500">Contact: +91 (022) 2891-9000 | support@medistock.health</p>
+                    <p className="text-slate-600">{currentAddress}</p>
+                    <p className="text-slate-500">GSTIN: {currentGstin} • Drug Lic: {currentDlNumber}</p>
+                    <p className="text-slate-500">Contact: {currentPhone}</p>
                   </div>
 
                   <div className="text-right">

@@ -34,7 +34,7 @@ interface PosCounterBillingProps {
 }
 
 export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSalesReceipt }) => {
-  const { medicines, customers = [], createSalesBill, navigate } = useInventory();
+  const { medicines, customers = [], createSalesBill, navigate, pharmacyProfile } = useInventory();
 
   // Search & Selected Drug state
   const [searchQuery, setSearchQuery] = useState('');
@@ -54,7 +54,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
   const [cart, setCart] = useState<SalesBillItem[]>([]);
   const [customerName, setCustomerName] = useState('Walk-in Customer');
   const [customerPhone, setCustomerPhone] = useState('');
-  const [doctorName, setDoctorName] = useState('');
+  const [doctorName, setDoctorName] = useState(pharmacyProfile?.defaultDoctorName || 'Dr. Jai');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'UPI' | 'Card' | 'Credit'>('Cash');
   const [overallDiscount, setOverallDiscount] = useState<number>(0);
   const [billNotes, setBillNotes] = useState('');
@@ -286,7 +286,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
       customerId: matchedCustomer?.id,
       customerName: customerName.trim() || 'Walk-in Customer',
       customerPhone: customerPhone.trim() || undefined,
-      doctorName: doctorName.trim() || undefined,
+      doctorName: doctorName.trim() || pharmacyProfile?.defaultDoctorName || 'Dr. Jai',
       items: cart,
       subtotal,
       discountAmount: overallDiscount,
@@ -298,7 +298,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
       paymentMethod,
       paymentStatus: isCredit ? 'UNPAID' : 'PAID',
       notes: billNotes,
-      pharmacistName: 'Dr. Arjun (Registered Pharmacist)'
+      pharmacistName: pharmacyProfile?.pharmacistName || 'Pharmacist In-Charge'
     });
 
     try {
@@ -309,7 +309,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
     setCart([]);
     setCustomerName('Walk-in Customer');
     setCustomerPhone('');
-    setDoctorName('');
+    setDoctorName(pharmacyProfile?.defaultDoctorName || 'Dr. Jai');
     setOverallDiscount(0);
     setBillNotes('');
 

@@ -11,7 +11,8 @@ import {
   Calendar, 
   CheckCircle2, 
   AlertCircle,
-  Phone
+  Phone,
+  BookOpen
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { CustomerAccount } from '../../types/inventory';
@@ -30,9 +31,14 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   onClose,
   onOpenRecordPayment
 }) => {
-  const { salesBills, customerPayments } = useInventory();
+  const { salesBills, customerPayments, pharmacyProfile } = useInventory();
 
   if (!isOpen || !customer) return null;
+
+  const currentPharmacyName = pharmacyProfile?.pharmacyName || 'Santoshi Maa Medical';
+  const currentAddress = pharmacyProfile?.address || 'Basni 2nd Phase Near Dr. Adarsh School';
+  const currentPhone = pharmacyProfile?.phone || '+91 98290 12345';
+  const currentGstin = pharmacyProfile?.gstin || '08AAAAA0000A1Z5';
 
   const cleanPhone = customer.phone.replace(/\D/g, '').slice(-10);
 
@@ -85,7 +91,7 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const handleWhatsAppShare = () => {
-    const message = `Hello ${customer.name}, greeting from MediStock Pharmacy. Your outstanding balance is ${formatCurrency(customer.balanceDue)}. Total purchases: ${formatCurrency(customer.totalPurchases)}. Kindly settle at your convenience. Thank you!`;
+    const message = `Namaste ${customer.name} ji, greeting from ${currentPharmacyName}. Your outstanding medicine ledger balance is ${formatCurrency(customer.balanceDue)}. Total purchases: ${formatCurrency(customer.totalPurchases)}. Kindly settle via UPI at your convenience. Thank you!`;
     const cleanP = customer.phone.replace(/\D/g, '').slice(-10);
     window.open(`https://wa.me/91${cleanP}?text=${encodeURIComponent(message)}`, '_blank');
   };
@@ -112,21 +118,21 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
           className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden z-10 max-h-[92vh] flex flex-col print:max-h-none print:shadow-none print:border-none print:rounded-none"
         >
           {/* Header */}
-          <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between print:hidden">
+          <div className="px-6 py-4 bg-gradient-to-r from-teal-800 to-emerald-800 text-white flex items-center justify-between print:hidden">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-500/30 flex items-center justify-center">
-                <FileSpreadsheet className="w-5 h-5" />
+              <div className="p-2 bg-white/10 rounded-xl">
+                <BookOpen className="w-5 h-5 text-emerald-200" />
               </div>
               <div>
-                <h3 className="font-bold text-sm">Customer Statement & Khata Passbook</h3>
-                <p className="text-[11px] text-slate-300">Transaction History & Debt Ledger</p>
+                <h3 className="font-bold text-sm sm:text-base">Customer Khata Passbook & Statement</h3>
+                <p className="text-xs text-teal-100">Ledger of medicine dispenses & debt settlements</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={handleWhatsAppShare}
-                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold shadow-2xs"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span>WhatsApp Statement</span>
@@ -156,10 +162,10 @@ export const CustomerStatementModal: React.FC<CustomerStatementModalProps> = ({
                   <div className="w-6 h-6 rounded-lg bg-teal-700 text-white font-bold text-xs flex items-center justify-center">
                     +
                   </div>
-                  <span className="text-lg font-bold text-slate-900">MediStock Hospital Pharmacy</span>
+                  <span className="text-lg font-bold text-slate-900">{currentPharmacyName}</span>
                 </div>
-                <p className="text-slate-500 text-[11px]">42 Medical Center Boulevard, Healthcare District</p>
-                <p className="text-slate-500 text-[11px]">GSTIN: 27AAAAA0000A1Z5 • Phone: +91 022 2891-9000</p>
+                <p className="text-slate-600 text-[11px]">{currentAddress}</p>
+                <p className="text-slate-500 text-[11px]">GSTIN: {currentGstin} • Phone: {currentPhone}</p>
               </div>
 
               <div className="text-right">

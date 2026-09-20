@@ -33,15 +33,33 @@ export const SettingsView: React.FC = () => {
     medicines,
     vendors,
     purchaseBills,
-    stockMovements
+    stockMovements,
+    pharmacyProfile,
+    updatePharmacyProfile
   } = useInventory();
 
-  const [pharmacyName, setPharmacyName] = useState('Apex Care Hospital Central Pharmacy');
-  const [dlNumber, setDlNumber] = useState('DL-20B/21B-48190-MH');
-  const [gstin, setGstin] = useState('27AAAAA0000A1Z5');
-  const [pharmacistName, setPharmacistName] = useState('Dr. Arjun (Reg #R-88219)');
+  const [pharmacyName, setPharmacyName] = useState(pharmacyProfile?.pharmacyName || 'Santoshi Maa Medical');
+  const [address, setAddress] = useState(pharmacyProfile?.address || 'Basni 2nd Phase Near Dr. Adarsh School');
+  const [phone, setPhone] = useState(pharmacyProfile?.phone || '+91 98290 12345');
+  const [defaultDoctorName, setDefaultDoctorName] = useState(pharmacyProfile?.defaultDoctorName || 'Dr. Jai');
+  const [dlNumber, setDlNumber] = useState(pharmacyProfile?.dlNumber || 'DL-20B/21B-48190');
+  const [gstin, setGstin] = useState(pharmacyProfile?.gstin || '08AAAAA0000A1Z5');
+  const [pharmacistName, setPharmacistName] = useState(pharmacyProfile?.pharmacistName || 'Pharmacist In-Charge');
   const [defaultThreshold, setDefaultThreshold] = useState(20);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Sync state if pharmacyProfile changes externally
+  useEffect(() => {
+    if (pharmacyProfile) {
+      setPharmacyName(pharmacyProfile.pharmacyName);
+      setAddress(pharmacyProfile.address);
+      setPhone(pharmacyProfile.phone);
+      setDefaultDoctorName(pharmacyProfile.defaultDoctorName);
+      setDlNumber(pharmacyProfile.dlNumber);
+      setGstin(pharmacyProfile.gstin);
+      setPharmacistName(pharmacyProfile.pharmacistName);
+    }
+  }, [pharmacyProfile]);
 
   // Gemini AI Key State
   const [geminiKey, setGeminiKey] = useState<string>(() => getStoredApiKey());
@@ -87,6 +105,15 @@ export const SettingsView: React.FC = () => {
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
+    updatePharmacyProfile({
+      pharmacyName: pharmacyName.trim() || 'Santoshi Maa Medical',
+      address: address.trim() || 'Basni 2nd Phase Near Dr. Adarsh School',
+      phone: phone.trim() || '+91 98290 12345',
+      defaultDoctorName: defaultDoctorName.trim() || 'Dr. Jai',
+      dlNumber: dlNumber.trim() || 'DL-20B/21B-48190',
+      gstin: gstin.trim() || '08AAAAA0000A1Z5',
+      pharmacistName: pharmacistName.trim() || 'Pharmacist In-Charge'
+    });
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 3000);
     try {
@@ -98,7 +125,7 @@ export const SettingsView: React.FC = () => {
     const backup = {
       version: '2.4.0',
       exportedAt: new Date().toISOString(),
-      pharmacy: { pharmacyName, dlNumber, gstin, pharmacistName },
+      pharmacy: { pharmacyName, address, phone, defaultDoctorName, dlNumber, gstin, pharmacistName },
       medicines,
       vendors,
       purchaseBills,
@@ -127,7 +154,7 @@ export const SettingsView: React.FC = () => {
       {savedSuccess && (
         <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl flex items-center gap-2 text-xs font-semibold animate-in fade-in">
           <Check className="w-4 h-4 text-emerald-600" />
-          <span>Pharmacy configuration settings saved successfully!</span>
+          <span>Pharmacy configuration settings saved and applied across all cash memos & invoices!</span>
         </div>
       )}
 
@@ -135,18 +162,30 @@ export const SettingsView: React.FC = () => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
         <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2 border-b border-slate-100 pb-2">
           <Building2 className="w-4 h-4 text-teal-700" />
-          Pharmacy Establishment Profile
+          Pharmacy Establishment Profile & Invoice Masthead
         </h3>
 
         <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Pharmacy / Hospital Name</label>
+              <label className="block font-bold text-slate-700 mb-1">Pharmacy / Medical Store Name</label>
               <input
                 type="text"
                 value={pharmacyName}
                 onChange={e => setPharmacyName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium"
+                placeholder="Santoshi Maa Medical"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:border-teal-600"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Default Prescribing Doctor</label>
+              <input
+                type="text"
+                value={defaultDoctorName}
+                onChange={e => setDefaultDoctorName(e.target.value)}
+                placeholder="Dr. Jai"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold focus:border-teal-600"
               />
             </div>
 
@@ -156,7 +195,32 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={pharmacistName}
                 onChange={e => setPharmacistName(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium"
+                placeholder="Pharmacist In-Charge"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:border-teal-600"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <label className="block font-bold text-slate-700 mb-1">Pharmacy Store Address</label>
+              <input
+                type="text"
+                value={address}
+                onChange={e => setAddress(e.target.value)}
+                placeholder="Basni 2nd Phase Near Dr. Adarsh School"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:border-teal-600"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Store Contact Phone</label>
+              <input
+                type="text"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+91 98290 12345"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:border-teal-600"
               />
             </div>
           </div>
@@ -168,7 +232,8 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={dlNumber}
                 onChange={e => setDlNumber(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800"
+                placeholder="DL-20B/21B-48190"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:border-teal-600"
               />
             </div>
 
@@ -178,7 +243,8 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={gstin}
                 onChange={e => setGstin(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800"
+                placeholder="08AAAAA0000A1Z5"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-800 focus:border-teal-600"
               />
             </div>
 
@@ -189,7 +255,7 @@ export const SettingsView: React.FC = () => {
                 min="1"
                 value={defaultThreshold}
                 onChange={e => setDefaultThreshold(parseInt(e.target.value, 10) || 15)}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:border-teal-600"
               />
             </div>
           </div>
@@ -197,7 +263,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex justify-end pt-2">
             <button
               type="submit"
-              className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-xs shadow-sm transition-all active:scale-95"
+              className="px-5 py-2.5 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-xs shadow-sm transition-all active:scale-95 cursor-pointer"
             >
               Save Profile Changes
             </button>

@@ -228,3 +228,13 @@ export type PageId =
   | 'reports'
   | 'settings';
 
+export interface PharmacyProfile {
+  pharmacyName: string;
+  address: string;
+  phone: string;
+  dlNumber: string;
+  gstin: string;
+  pharmacistName: string;
+  defaultDoctorName: string;
+}
+

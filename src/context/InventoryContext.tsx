@@ -10,7 +10,8 @@ import {
   MovementType,
   SalesBill,
   CustomerAccount,
-  CustomerPaymentRecord
+  CustomerPaymentRecord,
+  PharmacyProfile
 } from '../types/inventory';
 import { 
   initialMedicines, 
@@ -24,6 +25,16 @@ import {
 } from '../data/initialData';
 import { getDaysUntilExpiry } from '../utils/formatters';
 
+export const DEFAULT_PHARMACY_PROFILE: PharmacyProfile = {
+  pharmacyName: 'Santoshi Maa Medical',
+  address: 'Basni 2nd Phase Near Dr. Adarsh School',
+  phone: '+91 98290 12345',
+  dlNumber: 'DL-20B/21B-48190',
+  gstin: '08AAAAA0000A1Z5',
+  pharmacistName: 'Pharmacist In-Charge',
+  defaultDoctorName: 'Dr. Jai'
+};
+
 interface InventoryContextType {
   // State
   medicines: Medicine[];
@@ -34,6 +45,7 @@ interface InventoryContextType {
   customerPayments: CustomerPaymentRecord[];
   stockMovements: StockMovement[];
   notifications: AppNotification[];
+  pharmacyProfile: PharmacyProfile;
   syncStatus: SyncStatus;
   lastSynced: Date;
   currentPage: PageId;
@@ -44,8 +56,11 @@ interface InventoryContextType {
   selectedVendor: Vendor | null;
   selectedCustomer: CustomerAccount | null;
   globalSearchOpen: boolean;
+  deletedPurchaseBills: PurchaseBill[];
+  superAdminPin: string;
+  setSuperAdminPin: (pin: string) => void;
   
-  // Navigation & UI controls
+  // Actions
   navigate: (page: PageId) => void;
   goBack: () => void;
   setSelectedMedicine: (med: Medicine | null) => void;
@@ -56,6 +71,7 @@ interface InventoryContextType {
   setGlobalSearchOpen: (open: boolean) => void;
   setSyncStatus: (status: SyncStatus) => void;
   triggerSync: () => Promise<void>;
+  updatePharmacyProfile: (updates: Partial<PharmacyProfile>) => void;
   
   // Business logic mutations
   addMedicine: (medicine: Omit<Medicine, 'id' | 'status'>) => void;
@@ -66,9 +82,6 @@ interface InventoryContextType {
   deletePurchaseBill: (billId: string, reason?: string, performedBy?: string) => void;
   restorePurchaseBill: (billId: string, performedBy?: string) => void;
   permanentlyDeletePurchaseBill: (billId: string) => void;
-  deletedPurchaseBills: PurchaseBill[];
-  superAdminPin: string;
-  setSuperAdminPin: (pin: string) => void;
   createSalesBill: (bill: Omit<SalesBill, 'id'>) => SalesBill;
   updateBillPayment: (billId: string, paidAmount: number, status: 'PAID' | 'PARTIAL' | 'UNPAID') => void;
   addVendor: (vendor: Omit<Vendor, 'id' | 'balanceDue' | 'totalPurchases'>) => void;
@@ -112,7 +125,8 @@ const STORAGE_KEYS = {
   CUSTOMERS: 'medistock_customers_v3',
   CUSTOMER_PAYMENTS: 'medistock_customer_payments_v3',
   MOVEMENTS: 'medistock_movements_v3',
-  NOTIFICATIONS: 'medistock_notifications_v3'
+  NOTIFICATIONS: 'medistock_notifications_v3',
+  PHARMACY_PROFILE: 'medistock_pharmacy_profile_v3'
 };
 
 export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -166,6 +180,24 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     const saved = localStorage.getItem(STORAGE_KEYS.NOTIFICATIONS);
     return saved ? JSON.parse(saved) : [];
   });
+
+  const [pharmacyProfile, setPharmacyProfile] = useState<PharmacyProfile>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.PHARMACY_PROFILE);
+    if (saved) {
+      try {
+        return { ...DEFAULT_PHARMACY_PROFILE, ...JSON.parse(saved) };
+      } catch {}
+    }
+    return DEFAULT_PHARMACY_PROFILE;
+  });
+
+  const updatePharmacyProfile = (updates: Partial<PharmacyProfile>) => {
+    setPharmacyProfile(prev => {
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(STORAGE_KEYS.PHARMACY_PROFILE, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
   const [lastSynced, setLastSynced] = useState<Date>(new Date());
@@ -1008,6 +1040,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         customerPayments,
         stockMovements,
         notifications,
+        pharmacyProfile,
+        updatePharmacyProfile,
         syncStatus,
         lastSynced,
         currentPage,
