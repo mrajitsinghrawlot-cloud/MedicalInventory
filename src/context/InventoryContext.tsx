@@ -55,6 +55,12 @@ interface InventoryContextType {
   deleteMedicine: (id: string) => void;
   adjustStock: (medicineId: string, quantityChange: number, type: MovementType, reason: string, performedBy?: string) => void;
   addPurchaseBill: (bill: Omit<PurchaseBill, 'id'> | (Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'> & { roundOff?: number; grandTotal?: number; subtotal?: number; taxAmount?: number })) => void;
+  deletePurchaseBill: (billId: string, reason?: string, performedBy?: string) => void;
+  restorePurchaseBill: (billId: string, performedBy?: string) => void;
+  permanentlyDeletePurchaseBill: (billId: string) => void;
+  deletedPurchaseBills: PurchaseBill[];
+  superAdminPin: string;
+  setSuperAdminPin: (pin: string) => void;
   createSalesBill: (bill: Omit<SalesBill, 'id'>) => SalesBill;
   updateBillPayment: (billId: string, paidAmount: number, status: 'PAID' | 'PARTIAL' | 'UNPAID') => void;
   addVendor: (vendor: Omit<Vendor, 'id' | 'balanceDue' | 'totalPurchases'>) => void;
@@ -84,6 +90,8 @@ const STORAGE_KEYS = {
   MEDICINES: 'medistock_medicines_v2',
   VENDORS: 'medistock_vendors_v2',
   BILLS: 'medistock_bills_v2',
+  DELETED_BILLS: 'medistock_deleted_bills_v2',
+  SUPER_ADMIN_PIN: 'medistock_super_admin_pin_v2',
   SALES: 'medistock_sales_v2',
   MOVEMENTS: 'medistock_movements_v2',
   NOTIFICATIONS: 'medistock_notifications_v2'
@@ -104,6 +112,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [purchaseBills, setPurchaseBills] = useState<PurchaseBill[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BILLS);
     return saved ? JSON.parse(saved) : initialPurchaseBills;
+  });
+
+  const [deletedPurchaseBills, setDeletedPurchaseBills] = useState<PurchaseBill[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.DELETED_BILLS);
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [superAdminPin, setSuperAdminPin] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.SUPER_ADMIN_PIN);
+    return saved || '7821';
   });
 
   const [salesBills, setSalesBills] = useState<SalesBill[]>(() => {
@@ -143,6 +161,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.BILLS, JSON.stringify(purchaseBills));
   }, [purchaseBills]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.DELETED_BILLS, JSON.stringify(deletedPurchaseBills));
+  }, [deletedPurchaseBills]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.SUPER_ADMIN_PIN, superAdminPin);
+  }, [superAdminPin]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(salesBills));
@@ -510,6 +536,199 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
+  const deletePurchaseBill = (billId: string, reason?: string, performedBy?: string) => {
+    const targetBill = purchaseBills.find(b => b.id === billId);
+    if (!targetBill) return;
+
+    const deletionAuditMovements: StockMovement[] = [];
+    const unpaidAmount = targetBill.grandTotal - (targetBill.paidAmount || 0);
+
+    // 1. Atomically deduct stock quantities from inventory
+    setMedicines(prevMedicines => {
+      const updatedMedicines = [...prevMedicines];
+
+      targetBill.items.forEach((item, idx) => {
+        const deductedQty = Number(item.quantity || 0) + Number(item.freeQuantity || 0);
+        if (deductedQty <= 0) return;
+
+        const trimmedName = (item.medicineName || '').trim().toLowerCase();
+        const existingIndex = updatedMedicines.findIndex(m => 
+          (item.medicineId && m.id === item.medicineId) || 
+          (trimmedName && m.name.toLowerCase() === trimmedName)
+        );
+
+        if (existingIndex !== -1) {
+          const existing = updatedMedicines[existingIndex];
+          const prevStock = Number(existing.stockQuantity) || 0;
+          const newStock = Math.max(0, prevStock - deductedQty);
+          const status = computeMedicineStatus(newStock, existing.minStockThreshold || 10, existing.expiryDate);
+
+          updatedMedicines[existingIndex] = {
+            ...existing,
+            stockQuantity: newStock,
+            status
+          };
+
+          deletionAuditMovements.push({
+            id: `mov-del-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            medicineId: existing.id,
+            medicineName: existing.name,
+            type: 'RETURN',
+            quantity: -deductedQty,
+            date: new Date().toISOString(),
+            reason: `Purchase Bill #${targetBill.billNumber} Deleted / Stock Reversal (${targetBill.vendorName}) - ${reason || 'Inward Cancelled'}`,
+            referenceId: targetBill.id,
+            performedBy: performedBy || 'Super Admin',
+            previousStock: prevStock,
+            newStock
+          });
+        }
+      });
+
+      return updatedMedicines;
+    });
+
+    if (deletionAuditMovements.length > 0) {
+      setStockMovements(prev => [...deletionAuditMovements, ...prev]);
+    }
+
+    // 2. Adjust vendor balance due and total purchases
+    setVendors(prevVendors => prevVendors.map(v => {
+      const isTargetVendor = (targetBill.vendorId && v.id === targetBill.vendorId) ||
+        (targetBill.vendorName && v.name.toLowerCase() === targetBill.vendorName.trim().toLowerCase());
+      if (isTargetVendor) {
+        return {
+          ...v,
+          balanceDue: Math.max(0, (v.balanceDue || 0) - unpaidAmount),
+          totalPurchases: Math.max(0, (v.totalPurchases || 0) - targetBill.grandTotal)
+        };
+      }
+      return v;
+    }));
+
+    // 3. Move to deletedPurchaseBills (soft delete for Super Admin recovery)
+    const softDeletedBill: PurchaseBill = {
+      ...targetBill,
+      isDeleted: true,
+      deletedAt: new Date().toISOString(),
+      deletedBy: performedBy || 'Super Admin',
+      deletionReason: reason || 'Inward Bill Deleted / Stock Reverted'
+    };
+
+    setDeletedPurchaseBills(prev => [softDeletedBill, ...prev.filter(b => b.id !== billId)]);
+    setPurchaseBills(prev => prev.filter(b => b.id !== billId));
+  };
+
+  const restorePurchaseBill = (billId: string, performedBy?: string) => {
+    const targetBill = deletedPurchaseBills.find(b => b.id === billId);
+    if (!targetBill) return;
+
+    const restoreAuditMovements: StockMovement[] = [];
+    const unpaidAmount = targetBill.grandTotal - (targetBill.paidAmount || 0);
+
+    // 1. Atomically restore medicine stock quantities
+    setMedicines(prevMedicines => {
+      const updatedMedicines = [...prevMedicines];
+
+      targetBill.items.forEach((item, idx) => {
+        const addedQty = Number(item.quantity || 0) + Number(item.freeQuantity || 0);
+        if (addedQty <= 0) return;
+
+        const trimmedName = (item.medicineName || '').trim().toLowerCase();
+        const existingIndex = updatedMedicines.findIndex(m => 
+          (item.medicineId && m.id === item.medicineId) || 
+          (trimmedName && m.name.toLowerCase() === trimmedName)
+        );
+
+        if (existingIndex !== -1) {
+          const existing = updatedMedicines[existingIndex];
+          const prevStock = Number(existing.stockQuantity) || 0;
+          const newStock = prevStock + addedQty;
+          const status = computeMedicineStatus(newStock, existing.minStockThreshold || 10, existing.expiryDate);
+
+          updatedMedicines[existingIndex] = {
+            ...existing,
+            stockQuantity: newStock,
+            status
+          };
+
+          restoreAuditMovements.push({
+            id: `mov-res-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+            medicineId: existing.id,
+            medicineName: existing.name,
+            type: 'PURCHASE',
+            quantity: addedQty,
+            date: new Date().toISOString(),
+            reason: `Purchase Bill #${targetBill.billNumber} Restored by Super Admin (${targetBill.vendorName})`,
+            referenceId: targetBill.id,
+            performedBy: performedBy || 'Super Admin',
+            previousStock: prevStock,
+            newStock
+          });
+        } else {
+          // Re-create medicine if missing
+          const medId = item.medicineId || `med-${Date.now()}-${idx}`;
+          const status = computeMedicineStatus(addedQty, 10, item.expiryDate || '2028-12-31');
+          updatedMedicines.unshift({
+            id: medId,
+            name: item.medicineName,
+            genericName: item.medicineName,
+            category: 'Medical Supplies',
+            form: 'Tablet',
+            strength: 'Standard',
+            manufacturer: targetBill.vendorName,
+            batchNumber: item.batchNumber || 'BAT-RESTORE',
+            barcode: String(Math.floor(100000000000 + Math.random() * 900000000000)),
+            expiryDate: item.expiryDate || '2028-12-31',
+            purchasePrice: item.purchasePrice || 50,
+            mrp: item.mrp || Math.round((item.purchasePrice || 50) * 1.35 * 100) / 100,
+            unitsPerPack: 10,
+            stockQuantity: addedQty,
+            minStockThreshold: 10,
+            rackLocation: 'Inward Shelf',
+            scheduleType: 'OTC',
+            requiresPrescription: false,
+            status,
+            gstRate: item.gstRate ?? 12
+          });
+        }
+      });
+
+      return updatedMedicines;
+    });
+
+    if (restoreAuditMovements.length > 0) {
+      setStockMovements(prev => [...restoreAuditMovements, ...prev]);
+    }
+
+    // 2. Restore vendor ledger
+    setVendors(prevVendors => prevVendors.map(v => {
+      const isTargetVendor = (targetBill.vendorId && v.id === targetBill.vendorId) ||
+        (targetBill.vendorName && v.name.toLowerCase() === targetBill.vendorName.trim().toLowerCase());
+      if (isTargetVendor) {
+        return {
+          ...v,
+          balanceDue: (v.balanceDue || 0) + unpaidAmount,
+          totalPurchases: (v.totalPurchases || 0) + targetBill.grandTotal
+        };
+      }
+      return v;
+    }));
+
+    // 3. Move back to active purchaseBills
+    const restoredBill: PurchaseBill = {
+      ...targetBill,
+      isDeleted: false
+    };
+
+    setPurchaseBills(prev => [restoredBill, ...prev]);
+    setDeletedPurchaseBills(prev => prev.filter(b => b.id !== billId));
+  };
+
+  const permanentlyDeletePurchaseBill = (billId: string) => {
+    setDeletedPurchaseBills(prev => prev.filter(b => b.id !== billId));
+  };
+
   const updateBillPayment = (billId: string, paidAmount: number, status: 'PAID' | 'PARTIAL' | 'UNPAID') => {
     setPurchaseBills(prev => prev.map(b => {
       if (b.id === billId) {
@@ -597,6 +816,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         medicines,
         vendors,
         purchaseBills,
+        deletedPurchaseBills,
+        superAdminPin,
+        setSuperAdminPin,
         salesBills,
         stockMovements,
         notifications,
@@ -623,6 +845,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         deleteMedicine,
         adjustStock,
         addPurchaseBill,
+        deletePurchaseBill,
+        restorePurchaseBill,
+        permanentlyDeletePurchaseBill,
         createSalesBill,
         updateBillPayment,
         addVendor,

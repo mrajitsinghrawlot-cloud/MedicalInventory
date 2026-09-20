@@ -98,6 +98,10 @@ export interface PurchaseBill {
   paymentMethod: 'Bank Transfer' | 'Cheque' | 'Cash' | 'UPI' | 'Credit Note';
   notes?: string;
   receivedDate: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  deletionReason?: string;
 }
 
 export interface SalesBillItem {

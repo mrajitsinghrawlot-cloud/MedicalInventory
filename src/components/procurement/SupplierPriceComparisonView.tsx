@@ -446,10 +446,10 @@ export const SupplierPriceComparisonView: React.FC<SupplierPriceComparisonViewPr
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Analyzed Products</span>
-            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[125px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Analyzed Products</span>
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
               <Pill className="w-4 h-4" />
             </div>
           </div>
@@ -461,10 +461,10 @@ export const SupplierPriceComparisonView: React.FC<SupplierPriceComparisonViewPr
           </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Multi-Supplier Products</span>
-            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[125px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Multi-Supplier Products</span>
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0">
               <Building2 className="w-4 h-4" />
             </div>
           </div>
@@ -476,10 +476,10 @@ export const SupplierPriceComparisonView: React.FC<SupplierPriceComparisonViewPr
           </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Max Price Variance</span>
-            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[125px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Max Price Variance</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0">
               <TrendingUp className="w-4 h-4" />
             </div>
           </div>
@@ -491,10 +491,10 @@ export const SupplierPriceComparisonView: React.FC<SupplierPriceComparisonViewPr
           </div>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200 shadow-2xs relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Identified Savings</span>
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col justify-between min-h-[125px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Identified Savings</span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0">
               <Coins className="w-4 h-4" />
             </div>
           </div>
