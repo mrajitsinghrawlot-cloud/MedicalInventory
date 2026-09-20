@@ -126,6 +126,7 @@ export interface SalesBill {
   id: string;
   billNumber: string; // e.g. REC-2026-0042
   date: string; // ISO date
+  customerId?: string;
   customerName: string;
   customerPhone?: string;
   doctorName?: string;
@@ -136,10 +137,43 @@ export interface SalesBill {
   taxAmount: number;
   roundOff: number;
   grandTotal: number;
+  paidAmount?: number;
+  balanceDue?: number;
   paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Credit';
-  paymentStatus: 'PAID' | 'UNPAID';
+  paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID';
   notes?: string;
   pharmacistName: string;
+}
+
+export interface CustomerAccount {
+  id: string;
+  name: string;
+  phone: string; // Unique primary phone number
+  email?: string;
+  address?: string;
+  creditLimit: number; // e.g. ₹5,000 max allowed credit
+  totalPurchases: number; // Lifetime total purchases in INR
+  totalCredit: number; // Total credit given
+  totalPaid: number; // Total repayments collected
+  balanceDue: number; // Current outstanding debt (totalCredit - totalPaid)
+  lastPurchaseDate: string;
+  lastPaymentDate?: string;
+  notes?: string;
+  createdAt: string;
+  status: 'Active' | 'Blocked';
+}
+
+export interface CustomerPaymentRecord {
+  id: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  amount: number;
+  date: string; // ISO String
+  paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Bank Transfer';
+  referenceNo?: string; // UPI Ref / UTR / Cheque No
+  notes?: string;
+  receivedBy: string;
 }
 
 export interface Vendor {
@@ -181,6 +215,7 @@ export type PageId =
   | 'dashboard'
   | 'pos'
   | 'sales-history'
+  | 'customer-khata'
   | 'inventory'
   | 'medicine-details'
   | 'purchase-bills'
@@ -192,3 +227,4 @@ export type PageId =
   | 'stock-movements'
   | 'reports'
   | 'settings';
+

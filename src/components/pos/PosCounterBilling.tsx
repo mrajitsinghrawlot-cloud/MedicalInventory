@@ -34,7 +34,7 @@ interface PosCounterBillingProps {
 }
 
 export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSalesReceipt }) => {
-  const { medicines, createSalesBill, navigate } = useInventory();
+  const { medicines, customers = [], createSalesBill, navigate } = useInventory();
 
   // Search & Selected Drug state
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +59,31 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
   const [overallDiscount, setOverallDiscount] = useState<number>(0);
   const [billNotes, setBillNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [customerSuggestionsOpen, setCustomerSuggestionsOpen] = useState(false);
+
+  // Auto-detect existing customer in Khata ledger
+  const matchedCustomer = useMemo(() => {
+    const cleanP = customerPhone.replace(/\D/g, '').slice(-10);
+    const cleanN = customerName.trim().toLowerCase();
+    if (cleanP && cleanP.length >= 6) {
+      return customers.find(c => c.phone.replace(/\D/g, '').slice(-10) === cleanP) || null;
+    }
+    if (cleanN && cleanN !== 'walk-in customer' && cleanN.length >= 3) {
+      return customers.find(c => c.name.toLowerCase() === cleanN) || null;
+    }
+    return null;
+  }, [customers, customerPhone, customerName]);
+
+  // Customer search suggestions dropdown
+  const customerSuggestions = useMemo(() => {
+    const p = customerPhone.replace(/\D/g, '');
+    const n = customerName.trim().toLowerCase();
+    if (!p && (!n || n === 'walk-in customer')) return [];
+    return customers.filter(c => 
+      (p && c.phone.replace(/\D/g, '').includes(p)) ||
+      (n && n !== 'walk-in customer' && c.name.toLowerCase().includes(n))
+    ).slice(0, 4);
+  }, [customers, customerPhone, customerName]);
 
   // Search suggestions
   const searchResults = useMemo(() => {
@@ -158,19 +183,28 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
     setUnitPrice(Number((newPackPrice / pSize).toFixed(2)));
   };
 
+  // When loose unit price changes, update pack price
   const handleUnitPriceChange = (newUnitPrice: number) => {
     setUnitPrice(newUnitPrice);
     const pSize = selectedMed?.unitsPerPack || 10;
     setPackPrice(Number((newUnitPrice * pSize).toFixed(2)));
   };
 
-  // Add configured item to cart
+  // Live Line Item Total computation
+  const itemTotal = useMemo(() => {
+    if (!selectedMed) return 0;
+    const base = sellMode === 'PACK' ? packPrice * quantity : unitPrice * quantity;
+    const afterDiscount = base * (1 - itemDiscount / 100);
+    return Math.max(0, Math.round(afterDiscount * 100) / 100);
+  }, [selectedMed, sellMode, packPrice, unitPrice, quantity, itemDiscount]);
+
+  // Add Item to Billing Cart
   const handleAddToCart = () => {
     if (!selectedMed) return;
     setErrorMsg('');
 
     if (quantity <= 0) {
-      setErrorMsg('Please enter a quantity greater than 0');
+      setErrorMsg('Quantity must be greater than 0');
       return;
     }
 
@@ -180,14 +214,11 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
       : quantity;
 
     if (deductedPacks > selectedMed.stockQuantity) {
-      setErrorMsg(`Insufficient stock! Available: ${selectedMed.stockQuantity} strips (${selectedMed.stockQuantity * pSize} tablets).`);
+      setErrorMsg(`Insufficient stock: Requested ${deductedPacks} strips, but only ${selectedMed.stockQuantity} strips available.`);
       return;
     }
 
-    const baseAmount = sellMode === 'LOOSE' ? quantity * unitPrice : quantity * packPrice;
-    const discAmount = (baseAmount * itemDiscount) / 100;
-    const finalAmount = Number((baseAmount - discAmount).toFixed(2));
-    const taxAmt = Number(((finalAmount * (selectedMed.gstRate || 12)) / 100).toFixed(2));
+    const taxAmount = Number(((itemTotal * (selectedMed.gstRate || 12)) / 100).toFixed(2));
 
     const newItem: SalesBillItem = {
       medicineId: selectedMed.id,
@@ -201,9 +232,9 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
       packPrice,
       unitPrice,
       gstRate: selectedMed.gstRate || 12,
-      taxAmount: taxAmt,
+      taxAmount,
       discountPercent: itemDiscount,
-      totalAmount: finalAmount,
+      totalAmount: itemTotal,
       deductedPacks
     };
 
@@ -224,16 +255,35 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
 
   // Handle Checkout / Print
   const handleCompleteSale = () => {
+    setErrorMsg('');
     if (cart.length === 0) {
       setErrorMsg('Please add at least 1 medicine to the billing cart');
       return;
     }
 
+    // MANDATORY VALIDATION FOR CREDIT / BORROWER PURCHASES
+    if (paymentMethod === 'Credit') {
+      const cleanName = customerName.trim();
+      const cleanPhone = customerPhone.replace(/\D/g, '').slice(-10);
+
+      if (!cleanName || cleanName.toLowerCase() === 'walk-in customer' || cleanName.length < 3) {
+        setErrorMsg('Borrower / Customer Full Name is mandatory for Credit (Udhaar) sales.');
+        return;
+      }
+
+      if (!cleanPhone || cleanPhone.length !== 10) {
+        setErrorMsg('A valid 10-digit Mobile Phone Number is mandatory for Credit (Udhaar) accounts.');
+        return;
+      }
+    }
+
     const billNumber = `REC-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    const isCredit = paymentMethod === 'Credit';
 
     const newSale = createSalesBill({
       billNumber,
       date: new Date().toISOString(),
+      customerId: matchedCustomer?.id,
       customerName: customerName.trim() || 'Walk-in Customer',
       customerPhone: customerPhone.trim() || undefined,
       doctorName: doctorName.trim() || undefined,
@@ -243,8 +293,10 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
       taxAmount: totalTax,
       roundOff,
       grandTotal,
+      paidAmount: isCredit ? 0 : grandTotal,
+      balanceDue: isCredit ? grandTotal : 0,
       paymentMethod,
-      paymentStatus: 'PAID',
+      paymentStatus: isCredit ? 'UNPAID' : 'PAID',
       notes: billNotes,
       pharmacistName: 'Dr. Arjun (Registered Pharmacist)'
     });
@@ -259,6 +311,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
     setCustomerPhone('');
     setDoctorName('');
     setOverallDiscount(0);
+    setBillNotes('');
 
     // Open receipt modal
     onOpenSalesReceipt(newSale);
@@ -584,39 +637,156 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
         </AnimatePresence>
 
           {/* 3. Patient & Doctor Details */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
-              3. Patient & Doctor Information (Optional)
-            </span>
+          {/* 3. Patient & Doctor Details */}
+          <div className={`bg-white p-4 rounded-2xl border transition-all ${
+            paymentMethod === 'Credit' 
+              ? 'border-amber-400 bg-amber-50/20 shadow-md ring-2 ring-amber-400/20' 
+              : 'border-slate-200 shadow-2xs'
+          } space-y-3`}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider block">
+                3. Patient & Customer Details
+              </span>
+              {paymentMethod === 'Credit' && (
+                <span className="px-2 py-0.5 bg-amber-500 text-white rounded-full text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Udhaar / Credit Mandatory
+                </span>
+              )}
+            </div>
+
+            {paymentMethod === 'Credit' && (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] font-medium flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Customer Name and 10-digit Phone Number are <strong>strictly required</strong> to create or update their borrower Khata account.</span>
+              </div>
+            )}
+
+            {/* Existing Customer Khata Badge */}
+            {matchedCustomer && (
+              <div className="p-3 bg-teal-50/80 border border-teal-200 rounded-xl flex items-center justify-between text-xs animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-teal-700 text-white flex items-center justify-center font-bold text-xs">
+                    {matchedCustomer.name.charAt(0)}
+                  </div>
+                  <div>
+                    <div className="font-bold text-slate-900">{matchedCustomer.name} (Khata Account)</div>
+                    <div className="text-[11px] text-slate-500">
+                      Total Purchases: {formatCurrency(matchedCustomer.totalPurchases)} • Limit: {formatCurrency(matchedCustomer.creditLimit)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold">Existing Due</div>
+                  <div className={`font-mono font-bold text-sm ${matchedCustomer.balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    {formatCurrency(matchedCustomer.balanceDue)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Over-Limit Warning */}
+            {matchedCustomer && paymentMethod === 'Credit' && (matchedCustomer.balanceDue + grandTotal > matchedCustomer.creditLimit) && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>
+                  Warning: New balance ({formatCurrency(matchedCustomer.balanceDue + grandTotal)}) will exceed the customer's credit limit of {formatCurrency(matchedCustomer.creditLimit)}.
+                </span>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div>
-                <label className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
-                  <User className="w-3 h-3 text-slate-400" />
-                  <span>Patient / Customer Name</span>
+              {/* Customer Name */}
+              <div className="relative">
+                <label className="block text-slate-500 mb-1 font-medium flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <User className="w-3 h-3 text-slate-400" />
+                    <span>Customer Name</span>
+                  </span>
+                  {paymentMethod === 'Credit' && (
+                    <span className="text-amber-600 text-[10px] font-bold">* Required</span>
+                  )}
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Rahul Sharma"
+                  placeholder={paymentMethod === 'Credit' ? "Enter Customer Full Name" : "e.g. Rahul Sharma"}
                   value={customerName}
-                  onChange={e => setCustomerName(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                  onChange={e => {
+                    setCustomerName(e.target.value);
+                    setCustomerSuggestionsOpen(true);
+                  }}
+                  onFocus={() => {
+                    if (customerName === 'Walk-in Customer' && paymentMethod === 'Credit') {
+                      setCustomerName('');
+                    }
+                    setCustomerSuggestionsOpen(true);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-slate-800 font-medium focus:outline-none transition-all ${
+                    paymentMethod === 'Credit' && (!customerName || customerName.toLowerCase() === 'walk-in customer')
+                      ? 'bg-amber-50/50 border-2 border-amber-400 focus:border-amber-600'
+                      : 'bg-slate-50 border border-slate-200 focus:border-teal-600'
+                  }`}
                 />
+
+                {/* Auto-suggest dropdown */}
+                {customerSuggestionsOpen && customerSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-20 overflow-hidden divide-y divide-slate-100">
+                    {customerSuggestions.map(c => (
+                      <div
+                        key={c.id}
+                        onClick={() => {
+                          setCustomerName(c.name);
+                          setCustomerPhone(c.phone);
+                          setCustomerSuggestionsOpen(false);
+                        }}
+                        className="p-2.5 hover:bg-teal-50 cursor-pointer flex items-center justify-between transition-colors"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900">{c.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{c.phone}</div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-[11px] font-mono font-bold ${c.balanceDue > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                            {c.balanceDue > 0 ? `Due: ${formatCurrency(c.balanceDue)}` : 'No Dues'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
+              {/* Customer Phone */}
               <div>
-                <label className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
-                  <Phone className="w-3 h-3 text-slate-400" />
-                  <span>Mobile Phone</span>
+                <label className="block text-slate-500 mb-1 font-medium flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-slate-400" />
+                    <span>Mobile Phone</span>
+                  </span>
+                  {paymentMethod === 'Credit' && (
+                    <span className="text-amber-600 text-[10px] font-bold">* 10 Digits</span>
+                  )}
                 </label>
                 <input
-                  type="text"
-                  placeholder="+91 98200 00000"
+                  type="tel"
+                  maxLength={10}
+                  placeholder="98200 00000"
                   value={customerPhone}
-                  onChange={e => setCustomerPhone(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-mono"
+                  onChange={e => {
+                    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setCustomerPhone(cleaned);
+                    setCustomerSuggestionsOpen(true);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-slate-800 font-mono font-medium focus:outline-none transition-all ${
+                    paymentMethod === 'Credit' && customerPhone.length !== 10
+                      ? 'bg-amber-50/50 border-2 border-amber-400 focus:border-amber-600'
+                      : 'bg-slate-50 border border-slate-200 focus:border-teal-600'
+                  }`}
                 />
               </div>
 
+              {/* Prescribing Doctor */}
               <div>
                 <label className="block text-slate-500 mb-1 font-medium flex items-center gap-1">
                   <Stethoscope className="w-3 h-3 text-slate-400" />
@@ -627,7 +797,7 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
                   placeholder="e.g. Dr. Kulkarni (MD)"
                   value={doctorName}
                   onChange={e => setDoctorName(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-800"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-teal-600"
                 />
               </div>
             </div>

@@ -156,9 +156,23 @@ export const SalesBillInvoiceModal: React.FC<SalesBillInvoiceModalProps> = ({ bi
                   <span>-{formatCurrency(bill.discountAmount)}</span>
                 </div>
               )}
-              <div className="pt-2 border-t border-slate-200 flex justify-between text-sm font-extrabold text-slate-900">
-                <span>Net Paid ({bill.paymentMethod}):</span>
-                <span className="text-teal-800 text-base">{formatCurrency(bill.grandTotal)}</span>
+              <div className="pt-2 border-t border-slate-200 space-y-1">
+                <div className="flex justify-between text-sm font-extrabold text-slate-900">
+                  <span>Grand Total:</span>
+                  <span className="text-teal-800 text-base">{formatCurrency(bill.grandTotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>Payment Mode:</span>
+                  <span className={`font-bold ${bill.paymentMethod === 'Credit' ? 'text-amber-700' : 'text-slate-800'}`}>
+                    {bill.paymentMethod}
+                  </span>
+                </div>
+                {bill.paymentMethod === 'Credit' && (
+                  <div className="flex justify-between text-xs font-bold text-rose-600">
+                    <span>Balance Due (Udhaar):</span>
+                    <span>{formatCurrency(bill.balanceDue !== undefined ? bill.balanceDue : bill.grandTotal)}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>

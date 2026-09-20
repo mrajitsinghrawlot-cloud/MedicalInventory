@@ -8,7 +8,9 @@ import {
   SyncStatus, 
   PageId, 
   MovementType,
-  SalesBill 
+  SalesBill,
+  CustomerAccount,
+  CustomerPaymentRecord
 } from '../types/inventory';
 import { 
   initialMedicines, 
@@ -16,7 +18,9 @@ import {
   initialPurchaseBills, 
   initialStockMovements, 
   initialNotifications,
-  initialSalesBills 
+  initialSalesBills,
+  initialCustomers,
+  initialCustomerPayments
 } from '../data/initialData';
 import { getDaysUntilExpiry } from '../utils/formatters';
 
@@ -26,6 +30,8 @@ interface InventoryContextType {
   vendors: Vendor[];
   purchaseBills: PurchaseBill[];
   salesBills: SalesBill[];
+  customers: CustomerAccount[];
+  customerPayments: CustomerPaymentRecord[];
   stockMovements: StockMovement[];
   notifications: AppNotification[];
   syncStatus: SyncStatus;
@@ -36,6 +42,7 @@ interface InventoryContextType {
   selectedBill: PurchaseBill | null;
   selectedSalesBill: SalesBill | null;
   selectedVendor: Vendor | null;
+  selectedCustomer: CustomerAccount | null;
   globalSearchOpen: boolean;
   
   // Navigation & UI controls
@@ -45,6 +52,7 @@ interface InventoryContextType {
   setSelectedBill: (bill: PurchaseBill | null) => void;
   setSelectedSalesBill: (bill: SalesBill | null) => void;
   setSelectedVendor: (vendor: Vendor | null) => void;
+  setSelectedCustomer: (customer: CustomerAccount | null) => void;
   setGlobalSearchOpen: (open: boolean) => void;
   setSyncStatus: (status: SyncStatus) => void;
   triggerSync: () => Promise<void>;
@@ -68,6 +76,12 @@ interface InventoryContextType {
   disposeExpiredItem: (medicineId: string, quantity: number, reason: string) => void;
   returnToVendor: (medicineId: string, vendorId: string, quantity: number, reason: string) => void;
   
+  // Customer Khata & Borrower Mutations
+  recordCustomerPayment: (customerId: string, amount: number, paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Bank Transfer', notes?: string, referenceNo?: string, receivedBy?: string) => void;
+  createOrUpdateCustomer: (customerData: Omit<CustomerAccount, 'id' | 'createdAt'> & { id?: string }) => CustomerAccount;
+  updateCustomerCreditLimit: (customerId: string, newLimit: number) => void;
+  deleteCustomer: (customerId: string) => { success: boolean; message?: string };
+
   // Notifications & Data Reset
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
@@ -82,6 +96,8 @@ interface InventoryContextType {
   totalStockValue: number;
   totalSalesToday: number;
   totalSalesCount: number;
+  totalCustomerDues: number;
+  activeBorrowersCount: number;
 }
 
 const InventoryContext = createContext<InventoryContextType | undefined>(undefined);
@@ -93,6 +109,8 @@ const STORAGE_KEYS = {
   DELETED_BILLS: 'medistock_deleted_bills_v2',
   SUPER_ADMIN_PIN: 'medistock_super_admin_pin_v2',
   SALES: 'medistock_sales_v2',
+  CUSTOMERS: 'medistock_customers_v2',
+  CUSTOMER_PAYMENTS: 'medistock_customer_payments_v2',
   MOVEMENTS: 'medistock_movements_v2',
   NOTIFICATIONS: 'medistock_notifications_v2'
 };
@@ -129,6 +147,16 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     return saved ? JSON.parse(saved) : initialSalesBills;
   });
 
+  const [customers, setCustomers] = useState<CustomerAccount[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
+    return saved ? JSON.parse(saved) : initialCustomers;
+  });
+
+  const [customerPayments, setCustomerPayments] = useState<CustomerPaymentRecord[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.CUSTOMER_PAYMENTS);
+    return saved ? JSON.parse(saved) : initialCustomerPayments;
+  });
+
   const [stockMovements, setStockMovements] = useState<StockMovement[]>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
     return saved ? JSON.parse(saved) : initialStockMovements;
@@ -147,6 +175,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [selectedBill, setSelectedBill] = useState<PurchaseBill | null>(null);
   const [selectedSalesBill, setSelectedSalesBill] = useState<SalesBill | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<Vendor | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerAccount | null>(null);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
 
   // Sync to local storage
@@ -173,6 +202,14 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(salesBills));
   }, [salesBills]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+  }, [customers]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.CUSTOMER_PAYMENTS, JSON.stringify(customerPayments));
+  }, [customerPayments]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(stockMovements));
@@ -321,12 +358,74 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
   };
 
-  // Dispense / Sell Medicine to Patient (POS)
+  // Dispense / Sell Medicine to Patient (POS) with Customer Khata Auto-Linkage
   const createSalesBill = (billData: Omit<SalesBill, 'id'>): SalesBill => {
     const billId = `sale-${Date.now()}`;
+    const isCredit = billData.paymentMethod === 'Credit';
+    const paidAmount = billData.paidAmount !== undefined 
+      ? billData.paidAmount 
+      : (isCredit ? 0 : billData.grandTotal);
+    const balanceDue = billData.balanceDue !== undefined 
+      ? billData.balanceDue 
+      : Math.max(0, Number((billData.grandTotal - paidAmount).toFixed(2)));
+    const paymentStatus = billData.paymentStatus || (balanceDue === 0 ? 'PAID' : (paidAmount > 0 ? 'PARTIAL' : 'UNPAID'));
+
+    let linkedCustomerId = billData.customerId;
+    const cleanPhone = (billData.customerPhone || '').replace(/\D/g, '').slice(-10);
+    const cleanName = (billData.customerName || '').trim();
+
+    // Auto-update or create Customer Khata Account
+    if (cleanPhone || isCredit || (cleanName && cleanName.toLowerCase() !== 'walk-in customer')) {
+      setCustomers(prevCustomers => {
+        const existingIdx = prevCustomers.findIndex(c => 
+          (cleanPhone && c.phone.replace(/\D/g, '').slice(-10) === cleanPhone) ||
+          (cleanName && cleanName.toLowerCase() !== 'walk-in customer' && c.name.toLowerCase() === cleanName.toLowerCase())
+        );
+
+        if (existingIdx !== -1) {
+          const existing = prevCustomers[existingIdx];
+          linkedCustomerId = existing.id;
+          const updated = [...prevCustomers];
+          updated[existingIdx] = {
+            ...existing,
+            name: cleanName && cleanName.toLowerCase() !== 'walk-in customer' ? cleanName : existing.name,
+            phone: cleanPhone || existing.phone,
+            totalPurchases: Number(((existing.totalPurchases || 0) + billData.grandTotal).toFixed(2)),
+            totalCredit: Number(((existing.totalCredit || 0) + (isCredit ? billData.grandTotal : balanceDue)).toFixed(2)),
+            totalPaid: Number(((existing.totalPaid || 0) + paidAmount).toFixed(2)),
+            balanceDue: Number(((existing.balanceDue || 0) + balanceDue).toFixed(2)),
+            lastPurchaseDate: billData.date || new Date().toISOString().split('T')[0]
+          };
+          return updated;
+        } else if (cleanName && cleanName.toLowerCase() !== 'walk-in customer') {
+          const newCustId = `cust-${Date.now()}`;
+          linkedCustomerId = newCustId;
+          const newCustomer: CustomerAccount = {
+            id: newCustId,
+            name: cleanName,
+            phone: cleanPhone || 'Not Provided',
+            creditLimit: 5000,
+            totalPurchases: billData.grandTotal,
+            totalCredit: isCredit ? billData.grandTotal : balanceDue,
+            totalPaid: paidAmount,
+            balanceDue: balanceDue,
+            lastPurchaseDate: billData.date || new Date().toISOString().split('T')[0],
+            createdAt: new Date().toISOString().split('T')[0],
+            status: 'Active'
+          };
+          return [newCustomer, ...prevCustomers];
+        }
+        return prevCustomers;
+      });
+    }
+
     const newSale: SalesBill = {
       ...billData,
-      id: billId
+      id: billId,
+      customerId: linkedCustomerId,
+      paidAmount,
+      balanceDue,
+      paymentStatus
     };
 
     setSalesBills(prev => [newSale, ...prev]);
@@ -336,8 +435,6 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const target = medicines.find(m => m.id === item.medicineId);
       if (target) {
         const prevStock = target.stockQuantity;
-        // If selling loose tablets: quantity / packSize
-        // If selling full packs: quantity
         const packsToDeduct = item.sellMode === 'LOOSE' 
           ? Number((item.quantity / (item.packSize || 10)).toFixed(2))
           : item.quantity;
@@ -366,6 +463,83 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     });
 
     return newSale;
+  };
+
+  const recordCustomerPayment = (
+    customerId: string, 
+    amount: number, 
+    paymentMethod: 'Cash' | 'UPI' | 'Card' | 'Bank Transfer', 
+    notes?: string, 
+    referenceNo?: string, 
+    receivedBy = 'Pharmacist Admin'
+  ) => {
+    const target = customers.find(c => c.id === customerId);
+    if (!target) return;
+
+    const paymentRecord: CustomerPaymentRecord = {
+      id: `cpay-${Date.now()}`,
+      customerId,
+      customerName: target.name,
+      customerPhone: target.phone,
+      amount,
+      date: new Date().toISOString(),
+      paymentMethod,
+      referenceNo,
+      notes,
+      receivedBy
+    };
+
+    setCustomerPayments(prev => [paymentRecord, ...prev]);
+
+    setCustomers(prev => prev.map(c => {
+      if (c.id === customerId) {
+        const newBalance = Math.max(0, Number(((c.balanceDue || 0) - amount).toFixed(2)));
+        const newTotalPaid = Number(((c.totalPaid || 0) + amount).toFixed(2));
+        return {
+          ...c,
+          balanceDue: newBalance,
+          totalPaid: newTotalPaid,
+          lastPaymentDate: new Date().toISOString().split('T')[0]
+        };
+      }
+      return c;
+    }));
+  };
+
+  const createOrUpdateCustomer = (customerData: Omit<CustomerAccount, 'id' | 'createdAt'> & { id?: string }): CustomerAccount => {
+    if (customerData.id) {
+      setCustomers(prev => prev.map(c => c.id === customerData.id ? { ...c, ...customerData } as CustomerAccount : c));
+      const updated = customers.find(c => c.id === customerData.id) || (customerData as CustomerAccount);
+      return updated;
+    } else {
+      const newCustomer: CustomerAccount = {
+        ...customerData,
+        id: `cust-${Date.now()}`,
+        createdAt: new Date().toISOString().split('T')[0],
+        totalPurchases: customerData.totalPurchases || 0,
+        totalCredit: customerData.totalCredit || 0,
+        totalPaid: customerData.totalPaid || 0,
+        balanceDue: customerData.balanceDue || 0,
+        creditLimit: customerData.creditLimit || 5000,
+        status: customerData.status || 'Active'
+      };
+      setCustomers(prev => [newCustomer, ...prev]);
+      return newCustomer;
+    }
+  };
+
+  const updateCustomerCreditLimit = (customerId: string, newLimit: number) => {
+    setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, creditLimit: newLimit } : c));
+  };
+
+  const deleteCustomer = (customerId: string): { success: boolean; message?: string } => {
+    const target = customers.find(c => c.id === customerId);
+    if (!target) return { success: false, message: 'Customer not found' };
+    if (target.balanceDue > 0) {
+      return { success: false, message: `Cannot delete customer with active pending balance of ₹${target.balanceDue}` };
+    }
+    setCustomers(prev => prev.filter(c => c.id !== customerId));
+    return { success: true };
   };
 
   const addPurchaseBill = (billData: Omit<PurchaseBill, 'id'> | (Omit<PurchaseBill, 'id' | 'grandTotal' | 'subtotal' | 'taxAmount'> & { roundOff?: number; grandTotal?: number; subtotal?: number; taxAmount?: number })) => {
@@ -809,6 +983,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   
   const totalSalesToday = salesBills.reduce((sum, s) => sum + s.grandTotal, 0);
   const totalSalesCount = salesBills.length;
+  const totalCustomerDues = customers.reduce((sum, c) => sum + (c.balanceDue || 0), 0);
+  const activeBorrowersCount = customers.filter(c => (c.balanceDue || 0) > 0).length;
 
   return (
     <InventoryContext.Provider
@@ -820,6 +996,8 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         superAdminPin,
         setSuperAdminPin,
         salesBills,
+        customers,
+        customerPayments,
         stockMovements,
         notifications,
         syncStatus,
@@ -830,6 +1008,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         selectedBill,
         selectedSalesBill,
         selectedVendor,
+        selectedCustomer,
         globalSearchOpen,
         navigate,
         goBack,
@@ -837,6 +1016,7 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setSelectedBill,
         setSelectedSalesBill,
         setSelectedVendor,
+        setSelectedCustomer,
         setGlobalSearchOpen,
         setSyncStatus,
         triggerSync,
@@ -854,6 +1034,10 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         updateVendor,
         disposeExpiredItem,
         returnToVendor,
+        recordCustomerPayment,
+        createOrUpdateCustomer,
+        updateCustomerCreditLimit,
+        deleteCustomer,
         markNotificationRead,
         clearAllNotifications,
         resetToDemoData,
@@ -864,7 +1048,9 @@ export const InventoryProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         outOfStockCount,
         totalStockValue,
         totalSalesToday,
-        totalSalesCount
+        totalSalesCount,
+        totalCustomerDues,
+        activeBorrowersCount
       }}
     >
       {children}
@@ -879,3 +1065,4 @@ export const useInventory = () => {
   }
   return context;
 };
+

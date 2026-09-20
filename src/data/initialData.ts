@@ -1,4 +1,4 @@
-import { Medicine, Vendor, PurchaseBill, StockMovement, AppNotification, SalesBill } from '../types/inventory';
+import { Medicine, Vendor, PurchaseBill, StockMovement, AppNotification, SalesBill, CustomerAccount, CustomerPaymentRecord } from '../types/inventory';
 
 export const initialMedicines: Medicine[] = [
   {
@@ -795,3 +795,110 @@ export const initialNotifications: AppNotification[] = [
     metadata: { billId: 'bill-002' }
   }
 ];
+
+export const initialCustomers: CustomerAccount[] = [
+  {
+    id: 'cust-001',
+    name: 'Ramesh Sharma',
+    phone: '9820123456',
+    email: 'ramesh.sharma@example.com',
+    address: 'Shop 4, Market Road, Health District',
+    creditLimit: 5000,
+    totalPurchases: 2450,
+    totalCredit: 1200,
+    totalPaid: 400,
+    balanceDue: 800,
+    lastPurchaseDate: '2026-09-15',
+    lastPaymentDate: '2026-09-16',
+    notes: 'Regular local customer, monthly settlement',
+    createdAt: '2026-08-01',
+    status: 'Active'
+  },
+  {
+    id: 'cust-002',
+    name: 'Sunita Devi',
+    phone: '9833445566',
+    address: 'Flat 202, Gokul Heights, Civil Line',
+    creditLimit: 3000,
+    totalPurchases: 1850,
+    totalCredit: 1850,
+    totalPaid: 1850,
+    balanceDue: 0,
+    lastPurchaseDate: '2026-09-12',
+    lastPaymentDate: '2026-09-14',
+    notes: 'All previous dues cleared via UPI',
+    createdAt: '2026-08-10',
+    status: 'Active'
+  },
+  {
+    id: 'cust-003',
+    name: 'Vikas Gupta',
+    phone: '9819988776',
+    address: 'Sector 9, Near Govt Hospital',
+    creditLimit: 4000,
+    totalPurchases: 3200,
+    totalCredit: 2400,
+    totalPaid: 900,
+    balanceDue: 1500,
+    lastPurchaseDate: '2026-09-18',
+    lastPaymentDate: '2026-09-17',
+    notes: 'Chronic BP patient, takes monthly medicine',
+    createdAt: '2026-08-15',
+    status: 'Active'
+  },
+  {
+    id: 'cust-004',
+    name: 'Anil Patil',
+    phone: '9876501234',
+    address: 'Plot 12, Station Colony',
+    creditLimit: 2000,
+    totalPurchases: 650,
+    totalCredit: 650,
+    totalPaid: 200,
+    balanceDue: 450,
+    lastPurchaseDate: '2026-09-19',
+    lastPaymentDate: '2026-09-19',
+    notes: 'Partial cash deposit made',
+    createdAt: '2026-09-01',
+    status: 'Active'
+  }
+];
+
+export const initialCustomerPayments: CustomerPaymentRecord[] = [
+  {
+    id: 'cpay-001',
+    customerId: 'cust-002',
+    customerName: 'Sunita Devi',
+    customerPhone: '9833445566',
+    amount: 1850,
+    date: '2026-09-14T16:30:00Z',
+    paymentMethod: 'UPI',
+    referenceNo: 'UPI/2691048821',
+    notes: 'Full bill clearance via Google Pay',
+    receivedBy: 'Pharmacist Admin'
+  },
+  {
+    id: 'cpay-002',
+    customerId: 'cust-001',
+    customerName: 'Ramesh Sharma',
+    customerPhone: '9820123456',
+    amount: 400,
+    date: '2026-09-16T11:15:00Z',
+    paymentMethod: 'Cash',
+    notes: 'Partial cash payment',
+    receivedBy: 'Pharmacist Admin'
+  },
+  {
+    id: 'cpay-003',
+    customerId: 'cust-003',
+    customerName: 'Vikas Gupta',
+    customerPhone: '9819988776',
+    amount: 900,
+    date: '2026-09-17T14:20:00Z',
+    paymentMethod: 'UPI',
+    referenceNo: 'UPI/2990145812',
+    notes: 'Payment towards prescription balance',
+    receivedBy: 'Pharmacist Admin'
+  }
+];
+

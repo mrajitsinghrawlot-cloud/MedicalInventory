@@ -28,6 +28,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 const DashboardView = lazyWithRetry(() => import('./components/dashboard/DashboardView').then(m => ({ default: m.DashboardView })));
 const PosCounterBilling = lazyWithRetry(() => import('./components/pos/PosCounterBilling').then(m => ({ default: m.PosCounterBilling })));
 const SalesHistoryView = lazyWithRetry(() => import('./components/pos/SalesHistoryView').then(m => ({ default: m.SalesHistoryView })));
+const CustomerKhataView = lazyWithRetry(() => import('./components/customers/CustomerKhataView').then(m => ({ default: m.CustomerKhataView })));
 const MedicineList = lazyWithRetry(() => import('./components/inventory/MedicineList').then(m => ({ default: m.MedicineList })));
 const AlertsCenter = lazyWithRetry(() => import('./components/alerts/AlertsCenter').then(m => ({ default: m.AlertsCenter })));
 const PurchaseBillsList = lazyWithRetry(() => import('./components/bills/PurchaseBillsList').then(m => ({ default: m.PurchaseBillsList })));
@@ -99,6 +100,9 @@ const MainLayout: React.FC = () => {
             onOpenReceipt={(bill) => setSelectedSalesBill(bill)}
           />
         );
+
+      case 'customer-khata':
+        return <CustomerKhataView />;
 
       case 'dashboard':
         return (

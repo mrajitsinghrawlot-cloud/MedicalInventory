@@ -8,7 +8,8 @@ import {
   Calendar, 
   User, 
   CreditCard,
-  CheckCircle2
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { SalesBill } from '../../types/inventory';
@@ -152,14 +153,28 @@ export const SalesHistoryView: React.FC<SalesHistoryViewProps> = ({ onOpenNewSal
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        <span>{bill.paymentMethod}</span>
-                      </span>
+                      {bill.paymentMethod === 'Credit' ? (
+                        <span className="px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Credit (Udhaar)</span>
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-[10px] inline-flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>{bill.paymentMethod}</span>
+                        </span>
+                      )}
                     </td>
 
-                    <td className="py-3.5 px-4 font-extrabold text-slate-900 text-sm">
-                      {formatCurrency(bill.grandTotal)}
+                    <td className="py-3.5 px-4">
+                      <div className="font-extrabold text-slate-900 text-sm">
+                        {formatCurrency(bill.grandTotal)}
+                      </div>
+                      {bill.paymentMethod === 'Credit' && (
+                        <div className="text-[10px] text-rose-600 font-semibold">
+                          Due: {formatCurrency(bill.balanceDue !== undefined ? bill.balanceDue : bill.grandTotal)}
+                        </div>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-right" onClick={e => e.stopPropagation()}>

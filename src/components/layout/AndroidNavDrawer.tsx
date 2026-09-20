@@ -21,7 +21,8 @@ import {
   Barcode,
   Download,
   Smartphone,
-  Scale
+  Scale,
+  IndianRupee
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PageId } from '../../types/inventory';
@@ -47,6 +48,7 @@ export const AndroidNavDrawer: React.FC<AndroidNavDrawerProps> = ({
     expiredCount, 
     expiringSoonCount, 
     lowStockCount,
+    activeBorrowersCount,
     resetToDemoData,
     syncStatus
   } = useInventory();
@@ -111,6 +113,14 @@ export const AndroidNavDrawer: React.FC<AndroidNavDrawerProps> = ({
           badge: 'SELL',
           badgeColor: 'bg-emerald-600 text-white font-extrabold',
           highlight: true
+        },
+        {
+          id: 'customer-khata',
+          label: 'Customer Khata (Udhaar)',
+          desc: 'Credit accounts & debt settlements',
+          icon: IndianRupee,
+          badge: activeBorrowersCount > 0 ? activeBorrowersCount : undefined,
+          badgeColor: 'bg-rose-600 text-white font-bold'
         },
         {
           id: 'sales-history',

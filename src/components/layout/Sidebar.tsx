@@ -15,7 +15,8 @@ import {
   ChevronRight,
   ShieldCheck,
   Sparkles,
-  Scale
+  Scale,
+  IndianRupee
 } from 'lucide-react';
 import { useInventory } from '../../context/InventoryContext';
 import { PageId } from '../../types/inventory';
@@ -26,7 +27,8 @@ export const Sidebar: React.FC = () => {
     navigate, 
     expiredCount, 
     expiringSoonCount, 
-    lowStockCount 
+    lowStockCount,
+    activeBorrowersCount
   } = useInventory();
 
   const [collapsed, setCollapsed] = useState(false);
@@ -51,6 +53,13 @@ export const Sidebar: React.FC = () => {
       id: 'dashboard', 
       label: 'Dashboard', 
       icon: LayoutDashboard 
+    },
+    { 
+      id: 'customer-khata', 
+      label: 'Customer Khata (Udhaar)', 
+      icon: IndianRupee,
+      badge: activeBorrowersCount > 0 ? activeBorrowersCount : undefined,
+      badgeColor: 'bg-rose-600 text-white font-bold'
     },
     { 
       id: 'sales-history', 
