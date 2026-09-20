@@ -246,12 +246,15 @@ export const PosCounterBilling: React.FC<PosCounterBillingProps> = ({ onOpenSale
     setCart(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Totals calculations
+  // Totals calculations (Retail MRP is inclusive of GST)
   const subtotal = cart.reduce((acc, item) => acc + item.totalAmount, 0);
-  const totalTax = cart.reduce((acc, item) => acc + item.taxAmount, 0);
-  const rawTotal = subtotal + totalTax - overallDiscount;
-  const grandTotal = Math.max(0, Math.round(rawTotal));
-  const roundOff = Number((grandTotal - rawTotal).toFixed(2));
+  const totalTax = Number(cart.reduce((acc, item) => {
+    const rate = item.gstRate || 12;
+    return acc + ((item.totalAmount * rate) / (100 + rate));
+  }, 0).toFixed(2));
+  const rawTotal = Math.max(0, subtotal - overallDiscount);
+  const grandTotal = Math.round(rawTotal * 100) / 100;
+  const roundOff = 0;
 
   // Handle Checkout / Print
   const handleCompleteSale = () => {
